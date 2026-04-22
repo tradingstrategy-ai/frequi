@@ -1,5 +1,6 @@
 import type { AxiosResponse } from 'axios';
 import axios from 'axios';
+import { getPresetBots } from '@/config/presetBots';
 
 import type {
   AuthPayload,
@@ -11,10 +12,60 @@ import type {
 } from '@/types';
 
 const AUTH_LOGIN_INFO = 'ftAuthLoginInfo';
+const AUTH_SELECTED_BOT = 'ftSelectedBot';
 const APIBASE = '/api/v1';
+const PRELOAD_DEMO_BOTS = import.meta.env.DEV && import.meta.env.VITE_PRELOAD_DEMO_BOTS !== 'false';
 
 // Global state for all login infos
 const allLoginInfos = useStorage<AuthStorageMulti>(AUTH_LOGIN_INFO, {});
+
+export function seedDemoPresetBots(force = false): string[] {
+  const enabled = force || PRELOAD_DEMO_BOTS;
+  if (!enabled) {
+    return [];
+  }
+
+  const seeded: string[] = [];
+  const nextLoginInfos = { ...allLoginInfos.value };
+  for (const bot of getPresetBots()) {
+    if (nextLoginInfos[bot.botId]) {
+      continue;
+    }
+    nextLoginInfos[bot.botId] = {
+      botName: bot.botName,
+      apiUrl: bot.botUrl,
+      username: 'freqtrade',
+      refreshToken: `${bot.botId}-refresh-token`,
+      accessToken: `${bot.botId}-access-token`,
+      autoRefresh: false,
+      sortId: bot.sortId,
+    };
+    seeded.push(bot.botId);
+  }
+
+  if (seeded.length > 0) {
+    allLoginInfos.value = nextLoginInfos;
+  }
+
+  const currentSelected = localStorage.getItem(AUTH_SELECTED_BOT);
+  const selectedPreset = currentSelected
+    ? getPresetBots().find((bot) => bot.botId === currentSelected)
+    : undefined;
+  if (!currentSelected || !selectedPreset || selectedPreset.botType === 'NT') {
+    const preferred = nextLoginInfos['ichiv3-ls-hyperliquid-live']
+      ? 'ichiv3-ls-hyperliquid-live'
+      : nextLoginInfos['ichiv2-ls-hyperliquid-live']
+        ? 'ichiv2-ls-hyperliquid-live'
+        : nextLoginInfos['nt-multi-strategy']
+          ? 'nt-multi-strategy'
+          : seeded[0];
+    if (preferred) {
+      localStorage.setItem(AUTH_SELECTED_BOT, preferred);
+    }
+  }
+
+  return seeded;
+}
 
 /**
  * Get available bots with their descriptors
