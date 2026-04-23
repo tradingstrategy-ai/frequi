@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AuthPayload, AuthStorageWithBotId } from '@/types';
+import type { PresetBotDefinition } from '@/config/presetBots';
 
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
@@ -8,10 +9,12 @@ const props = withDefaults(
   defineProps<{
     inModal?: boolean;
     existingAuth?: AuthStorageWithBotId;
+    presetBot?: PresetBotDefinition;
   }>(),
   {
     inModal: false,
     existingAuth: undefined,
+    presetBot: undefined,
   },
 );
 const emit = defineEmits<{ loginResult: [value: boolean] }>();
@@ -39,6 +42,8 @@ const auth = ref<AuthPayload>({
 function emitLoginResult(value: boolean) {
   emit('loginResult', value);
 }
+
+const presetMode = computed(() => !botEdit.value && props.presetBot !== undefined);
 
 const urlDuplicate = computed<boolean>(() => {
   const bots = Object.values(botStore.availableBots).find((bot) => bot.botUrl === auth.value.url);
@@ -78,29 +83,33 @@ async function handleSubmit() {
   errorMessage.value = '';
   // Push the name to submitted names
   try {
-    const botId =
-      botEdit.value && props.existingAuth ? props.existingAuth.botId : botStore.nextBotId;
+    const botId = props.existingAuth?.botId ?? props.presetBot?.botId ?? botStore.nextBotId;
     const { login } = useLoginInfo(botId);
     await login(auth.value);
     if (botEdit.value) {
-      // Bot editing ...
+      botStore.updateBot(botId, {
+        botName: auth.value.botName,
+        botUrl: auth.value.url,
+      });
       const thisBot = botStore.botStores[botId];
       if (thisBot) {
         thisBot.isBotLoggedIn = true;
         thisBot.isBotOnline = true;
       }
-      // botStore.allRefreshFull();
       emitLoginResult(true);
     } else {
-      // Add new bot
-      const sortId = Object.keys(botStore.availableBots).length + 1;
-      botStore.addBot({
+      const sortId = props.presetBot?.sortId ?? Object.keys(botStore.availableBots).length + 1;
+      const botDescriptor = {
         botName: auth.value.botName,
         botId,
         botUrl: auth.value.url,
-        sortId: sortId,
-      });
-      // switch to newly added bot
+        sortId,
+      };
+      if (botId in botStore.availableBots) {
+        botStore.updateBot(botId, botDescriptor);
+      } else {
+        botStore.addBot(botDescriptor);
+      }
       botStore.selectBot(botId);
       emitLoginResult(true);
       botStore.allRefreshFull();
@@ -146,12 +155,14 @@ function handleOk(evt) {
 
 function reset() {
   resetLogin();
-  console.log('reset ', props.existingAuth);
   if (props.existingAuth) {
     botEdit.value = true;
     auth.value.botName = props.existingAuth.botName;
     auth.value.url = props.existingAuth.apiUrl;
     auth.value.username = props.existingAuth.username ?? '';
+  } else if (props.presetBot) {
+    auth.value.botName = props.presetBot.botName;
+    auth.value.url = props.presetBot.botUrl;
   }
 }
 
@@ -162,12 +173,26 @@ defineExpose({
 onMounted(() => {
   reset();
 });
+
+watch(
+  () => [props.existingAuth, props.presetBot],
+  () => reset(),
+  { deep: true },
+);
 </script>
 
 <template>
   <form ref="formRef" novalidate @submit.stop.prevent="handleSubmit" @reset="handleReset">
+    <UAlert v-if="presetMode" class="mb-4 text-start" color="info" title="Preset bot">
+      <template #description>
+        Connecting preset bot <strong>{{ props.presetBot?.botName }}</strong
+        >. The stable UI bot id will remain <code>{{ props.presetBot?.botId }}</code
+        >.
+      </template>
+    </UAlert>
     <UFormField class="mb-4" label="Bot Name">
       <UInput
+        id="name-input"
         v-model="auth.botName"
         placeholder="Bot Name"
         class="mt-1 block w-full"

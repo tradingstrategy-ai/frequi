@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ChartSliderPosition, PairHistory, Trade } from '@/types';
+import { useComparisonStore } from '@/stores/comparisonStore';
 
 const props = withDefaults(
   defineProps<{
@@ -28,6 +29,7 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore();
 const botStore = useBotStore();
 const plotStore = usePlotConfigStore();
+const comparisonStore = useComparisonStore();
 
 const dataset = computed((): PairHistory | undefined => {
   const firstpair = botStore.activeBot.plotMultiPairs[0];
@@ -58,6 +60,7 @@ watch(
 );
 
 onMounted(() => {
+  comparisonStore.ensureComparisonBots().then();
   if (botStore.activeBot.selectedPair) {
     botStore.activeBot.plotMultiPairs = [botStore.activeBot.selectedPair];
   } else if (props.availablePairs.length > 0) {
@@ -181,6 +184,12 @@ const singlePairSelection = computed({
           </BaseCheckbox>
           <BaseCheckbox v-model="settingsStore.useHeikinAshiCandles">
             <span class="text-nowrap">Heikin Ashi</span>
+          </BaseCheckbox>
+          <BaseCheckbox
+            v-if="comparisonStore.isSupportedBot(botStore.selectedBot)"
+            v-model="settingsStore.showBtTradeOverlay"
+          >
+            <span class="text-nowrap">Show BT trades</span>
           </BaseCheckbox>
 
           <div class="me-0 md:me-1 flex grow">

@@ -274,6 +274,12 @@ export function createBotSubStore(botId: string, botName: string) {
             botTradeId: `${botId}__${t.trade_id}`,
           }));
           tradeCount.value = tradesCount;
+          if (selectedPair.value === '' && trades.value.length > 0) {
+            selectedPair.value = trades.value[0].pair;
+          }
+          if (plotMultiPairs.value.length === 0 && trades.value.length > 0) {
+            plotMultiPairs.value = [trades.value[0].pair];
+          }
         }
         return Promise.resolve();
       } catch (error) {
@@ -649,6 +655,12 @@ export function createBotSubStore(botId: string, botName: string) {
         const { data } = await api.get<WhitelistResponse>('/whitelist');
         whitelist.value = data.whitelist;
         pairlistMethods.value = data.method;
+        if (selectedPair.value === '' && data.whitelist.length > 0) {
+          selectedPair.value = data.whitelist[0];
+        }
+        if (plotMultiPairs.value.length === 0 && data.whitelist.length > 0) {
+          plotMultiPairs.value = [data.whitelist[0]];
+        }
         return Promise.resolve(data);
       } catch (error) {
         return Promise.reject(error);

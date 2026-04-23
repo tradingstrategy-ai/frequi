@@ -25,6 +25,7 @@ export const useSettingsStore = defineStore(
     const currentTheme = ref('dark' as ThemeName);
     const useHeikinAshiCandles = ref(false);
     const showMarkArea = ref(true);
+    const showBtTradeOverlay = ref(false);
     const useReducedPairCalls = ref(true);
     const notifications = ref({ ...notificationDefaults });
     const profitDistributionBins = ref(20);
@@ -68,6 +69,7 @@ export const useSettingsStore = defineStore(
       currentTheme,
       useHeikinAshiCandles,
       showMarkArea,
+      showBtTradeOverlay,
       useReducedPairCalls,
       notifications,
       profitDistributionBins,

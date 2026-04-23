@@ -21,6 +21,36 @@ const routes: Array<RouteRecordRaw> = [
     component: () => import('@/views/ChartsView.vue'),
   },
   {
+    path: '/compare',
+    component: () => import('@/views/comparison/ComparisonLayout.vue'),
+    children: [
+      {
+        path: '',
+        redirect: '/compare/overview',
+      },
+      {
+        path: 'overview',
+        name: 'Freqtrade Compare Overview',
+        component: () => import('@/views/comparison/ComparisonOverview.vue'),
+      },
+      {
+        path: 'timeline',
+        name: 'Freqtrade Compare Timeline',
+        component: () => import('@/views/comparison/TradeTimeline.vue'),
+      },
+      {
+        path: 'pairs',
+        name: 'Freqtrade Compare Pairs',
+        component: () => import('@/views/comparison/PairCategoryAnalysis.vue'),
+      },
+      {
+        path: 'trades',
+        name: 'Freqtrade Compare Deep Dive',
+        component: () => import('@/views/comparison/TradeDeepDive.vue'),
+      },
+    ],
+  },
+  {
     path: '/logs',
     name: 'Freqtrade Logs',
     component: () => import('@/views/LogView.vue'),

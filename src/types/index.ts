@@ -4,6 +4,7 @@ export * from './backtest';
 export * from './balance';
 export * from './blacklist';
 export * from './botComparison';
+export * from './comparison';
 export * from './candleTypes';
 export * from './chart';
 export * from './daily';

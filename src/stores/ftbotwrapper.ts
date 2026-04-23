@@ -18,6 +18,7 @@ import type {
 import type { ComputedRef, Ref } from 'vue';
 import { TimeSummaryOptions } from '@/types';
 import { createBotSubStore } from './ftbot';
+import { seedDemoPresetBots } from '@/composables/loginInfo';
 const AUTH_SELECTED_BOT = 'ftSelectedBot';
 
 // Import axios for type inference only
@@ -581,6 +582,7 @@ export const useBotStore = defineStore('ftbot-wrapper', (): BotStoreSetup => {
 
 export function initBots() {
   const botStore = useBotStore();
+  seedDemoPresetBots();
   Object.entries(loggedInBots.value).forEach(([, v]) => {
     botStore.addBot(v);
   });

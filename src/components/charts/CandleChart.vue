@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import type { ChartSliderPosition, IndicatorConfig, PairHistory, PlotConfig, Trade } from '@/types';
+import type {
+  BtMarker,
+  ChartSliderPosition,
+  IndicatorConfig,
+  PairHistory,
+  PlotConfig,
+  Trade,
+} from '@/types';
 import { ChartType } from '@/types';
 
 import ECharts from 'vue-echarts';
@@ -54,6 +61,7 @@ use([
 
 const props = defineProps<{
   trades: Trade[];
+  btMarkers?: BtMarker[];
   dataset: PairHistory;
   heikinAshi: boolean;
   showMarkArea: boolean;
@@ -110,6 +118,48 @@ const hasData = computed(() => {
 const filteredTrades = computed(() => {
   return props.trades.filter((item: Trade) => item.pair === pair.value);
 });
+
+function generateBtMarkerSeries(markers: BtMarker[]): ScatterSeriesOption {
+  const markerData = markers.map((marker) => {
+    const isEntry = marker.type === 'entry';
+    const isLong = marker.direction === 'LONG';
+    return [
+      new Date(marker.date).getTime(),
+      marker.price,
+      isEntry ? 'BT entry' : 'BT exit',
+      marker.is_matched ? '#2563eb' : '#93c5fd',
+      isEntry ? (isLong ? 0 : 180) : isLong ? 180 : 0,
+      marker.is_matched ? 0.95 : 0.55,
+      `${marker.direction} ${marker.type}${marker.is_matched ? '' : ' (BT only)'}`,
+    ];
+  });
+
+  return {
+    name: 'BT Overlay',
+    type: 'scatter',
+    xAxisIndex: 0,
+    yAxisIndex: 0,
+    encode: {
+      x: 0,
+      y: 1,
+      label: 2,
+      tooltip: 6,
+    },
+    label: {
+      show: false,
+    },
+    itemStyle: {
+      color: (value) => (value.data ? value.data[3] : '#2563eb'),
+      borderColor: '#1d4ed8',
+      borderWidth: 1,
+      opacity: 0.9,
+    },
+    symbol: 'triangle',
+    symbolRotate: (value) => value[4],
+    symbolSize: 12,
+    data: markerData,
+  };
+}
 
 const chartTitle = computed(() => {
   return `${strategy.value} - ${pair.value} - ${timeframe.value}`;
@@ -571,6 +621,9 @@ function updateChart(initial = false) {
   const nameTrades = 'Trades';
   // Insert trades into legend, after the default columns
   addLegend(nameTrades, 4);
+  if (props.btMarkers && props.btMarkers.length > 0) {
+    addLegend('BT Overlay', 5);
+  }
   const tradesSeries: ScatterSeriesOption = generateTradeSeries(
     nameTrades,
     props.theme,
@@ -579,6 +632,9 @@ function updateChart(initial = false) {
   );
   if (Array.isArray(options.series)) {
     options.series.push(tradesSeries);
+    if (props.btMarkers && props.btMarkers.length > 0) {
+      options.series.push(generateBtMarkerSeries(props.btMarkers));
+    }
   }
 
   // Merge this into original data
@@ -733,7 +789,10 @@ watch([() => props.useUTC, () => props.theme, () => props.plotConfig], () =>
   initializeChartOptions(),
 );
 
-watch([() => props.dataset, () => props.heikinAshi, () => props.showMarkArea], () => updateChart());
+watch(
+  [() => props.dataset, () => props.heikinAshi, () => props.showMarkArea, () => props.btMarkers],
+  () => updateChart(),
+);
 
 watch(
   () => props.sliderPosition,

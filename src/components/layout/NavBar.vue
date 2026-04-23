@@ -120,6 +120,11 @@ const navItems = ref([
     icon: 'i-mdi-chart-line',
   },
   {
+    label: 'Compare',
+    to: '/compare/overview',
+    icon: 'i-mdi-compare-horizontal',
+  },
+  {
     label: 'Logs',
     to: '/logs',
     icon: 'i-mdi-format-list-bulleted',

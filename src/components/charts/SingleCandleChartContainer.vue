@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { ChartSliderPosition, PairHistory, Trade } from '@/types';
+import type { BtMarker, ChartSliderPosition, PairHistory, Trade } from '@/types';
 import { LoadingStatus } from '@/types';
+import { useComparisonStore } from '@/stores/comparisonStore';
 
 const props = withDefaults(
   defineProps<{
@@ -29,6 +30,7 @@ const settingsStore = useSettingsStore();
 const colorStore = useColorStore();
 const botStore = useBotStore();
 const plotStore = usePlotConfigStore();
+const comparisonStore = useComparisonStore();
 
 const dataset = computed((): PairHistory | undefined => {
   if (props.historicView) {
@@ -71,6 +73,18 @@ const noDatasetText = computed((): string => {
   }
 });
 
+const comparisonCapable = computed(() => comparisonStore.isSupportedBot(botStore.selectedBot));
+
+const btMarkers = computed<BtMarker[]>(() => {
+  if (!settingsStore.showBtTradeOverlay || !comparisonCapable.value || !props.pair) {
+    return [];
+  }
+  return (
+    comparisonStore.getCachedCandles(botStore.selectedBot, props.pair, props.timeframe)
+      ?.bt_markers ?? []
+  );
+});
+
 function refresh() {
   emit('refreshData', props.pair, plotStore.usedColumns);
 }
@@ -86,6 +100,13 @@ function assignFirstPair() {
   if (firstPair) {
     //props.pair = firstPair;
   }
+}
+
+async function loadBtMarkers() {
+  if (!settingsStore.showBtTradeOverlay || !comparisonCapable.value || !props.pair) {
+    return;
+  }
+  await comparisonStore.loadCandles(botStore.selectedBot, props.pair, props.timeframe);
 }
 
 watch(
@@ -116,6 +137,17 @@ watch(
   () => props.timeframe,
   () => {
     refreshIfNecessary();
+    loadBtMarkers().then();
+  },
+);
+
+watch(
+  () => [settingsStore.showBtTradeOverlay, props.pair, props.timeframe, botStore.selectedBot],
+  () => {
+    loadBtMarkers().then();
+  },
+  {
+    immediate: true,
   },
 );
 </script>
@@ -163,6 +195,7 @@ watch(
           v-if="hasDataset && dataset"
           :dataset="dataset"
           :trades="trades"
+          :bt-markers="btMarkers"
           :plot-config="plotStore.plotConfig"
           :heikin-ashi="settingsStore.useHeikinAshiCandles"
           :show-mark-area="settingsStore.showMarkArea"
