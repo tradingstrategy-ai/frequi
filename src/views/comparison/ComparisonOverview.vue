@@ -25,10 +25,15 @@ watch(
 
 <template>
   <div class="flex flex-col gap-4">
-    <ProgressSpinner v-if="comparisonStore.loading.overview" class="w-8 h-8 self-center" />
-    <Message v-else-if="comparisonStore.errors.overview" severity="warn" class="text-start">
-      {{ comparisonStore.errors.overview }}
-    </Message>
+    <div v-if="comparisonStore.loading.overview" class="flex flex-col gap-2 self-center">
+      <UIcon name="mdi:loading" class="w-8 h-8 animate-spin" />
+    </div>
+    <UAlert
+      v-else-if="comparisonStore.errors.overview"
+      color="warning"
+      class="text-start"
+      :title="comparisonStore.errors.overview"
+    />
     <template v-else-if="comparisonStore.overviewData">
       <KpiCards
         :live-metrics="comparisonStore.overviewData.live_metrics"
@@ -36,40 +41,32 @@ watch(
         :match-summary="comparisonStore.overviewData.match_summary"
       />
 
-      <Card>
-        <template #title>Equity Curve</template>
-        <template #content>
-          <EquityCurveChart
-            :equity-curve="comparisonStore.overviewData.equity_curve"
-            :mode="equityCurveMode"
-          />
-        </template>
-      </Card>
+      <UCard>
+        <div class="text-lg font-semibold mb-2">Equity Curve</div>
+        <EquityCurveChart
+          :equity-curve="comparisonStore.overviewData.equity_curve"
+          :mode="equityCurveMode"
+        />
+      </UCard>
 
-      <Card>
-        <template #title>Metrics</template>
-        <template #content>
-          <MetricsTable
-            :live-metrics="comparisonStore.overviewData.live_metrics"
-            :bt-metrics="comparisonStore.overviewData.bt_metrics"
-          />
-        </template>
-      </Card>
+      <UCard>
+        <div class="text-lg font-semibold mb-2">Metrics</div>
+        <MetricsTable
+          :live-metrics="comparisonStore.overviewData.live_metrics"
+          :bt-metrics="comparisonStore.overviewData.bt_metrics"
+        />
+      </UCard>
 
       <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <Card>
-          <template #title>Daily Profit</template>
-          <template #content>
-            <DailyProfitBars :rows="comparisonStore.overviewData.daily_profit" />
-          </template>
-        </Card>
+        <UCard>
+          <div class="text-lg font-semibold mb-2">Daily Profit</div>
+          <DailyProfitBars :rows="comparisonStore.overviewData.daily_profit" />
+        </UCard>
 
-        <Card>
-          <template #title>Monthly Heatmap</template>
-          <template #content>
-            <MonthlyHeatmap :rows="comparisonStore.overviewData.monthly_heatmap" />
-          </template>
-        </Card>
+        <UCard>
+          <div class="text-lg font-semibold mb-2">Monthly Heatmap</div>
+          <MonthlyHeatmap :rows="comparisonStore.overviewData.monthly_heatmap" />
+        </UCard>
       </div>
     </template>
     <EmptyComparisonState

@@ -56,37 +56,42 @@ watch(
         </p>
       </div>
       <div class="flex flex-col md:flex-row gap-2 md:items-center">
-        <InputText v-model="timerangeInput" class="min-w-[220px]" placeholder="YYYYMMDD-YYYYMMDD" />
-        <Button severity="secondary" @click="applyTimerange">
-          <template #icon><i-mdi-calendar-range /></template>
+        <UInput
+          v-model="timerangeInput"
+          class="min-w-[220px]"
+          placeholder="YYYYMMDD-YYYYMMDD"
+        />
+        <UButton color="neutral" icon="mdi:calendar-range" @click="applyTimerange">
           Apply timerange
-        </Button>
-        <Button
+        </UButton>
+        <UButton
           v-if="comparisonStore.canRefreshBacktest"
-          severity="contrast"
+          color="primary"
+          icon="mdi:refresh"
           @click="refreshBacktest"
         >
-          <template #icon><i-mdi-refresh /></template>
           Refresh Backtest
-        </Button>
+        </UButton>
       </div>
     </div>
 
-    <Message v-if="comparisonStore.supportedBotsError" severity="warn" class="text-start">
-      {{ comparisonStore.supportedBotsError }}
-    </Message>
+    <UAlert
+      v-if="comparisonStore.supportedBotsError"
+      color="warning"
+      class="text-start"
+      :title="comparisonStore.supportedBotsError"
+    />
 
-    <Message
+    <UAlert
       v-if="
         activeBotId &&
         !comparisonStore.isActiveBotSupported &&
         !comparisonStore.supportedBotsLoading
       "
-      severity="warn"
+      color="warning"
       class="text-start"
-    >
-      Comparison unavailable for this bot. Use one of the supported preset FT/NT bot entries.
-    </Message>
+      title="Comparison unavailable for this bot. Use one of the supported preset FT/NT bot entries."
+    />
 
     <div class="flex flex-wrap gap-2 border-b border-surface-300 pb-2">
       <RouterLink

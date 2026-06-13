@@ -3,6 +3,13 @@ import { useComparison } from '@/composables/useComparison';
 
 const { comparisonStore, activeBotId, activeTimerange } = useComparison();
 
+const pairHeatmapColumns = [
+  { accessorKey: 'pair', header: 'Pair' },
+  { accessorKey: 'live_profit', header: 'Live' },
+  { accessorKey: 'bt_profit', header: 'Backtest' },
+  { accessorKey: 'diff', header: 'Diff' },
+];
+
 async function loadPairs() {
   if (!activeBotId.value || !comparisonStore.isActiveBotSupported) return;
   comparisonStore.setTimerange(activeTimerange.value);
@@ -22,22 +29,21 @@ watch(
 
 <template>
   <div class="flex flex-col gap-4">
-    <ProgressSpinner v-if="comparisonStore.loading.pairs" class="w-8 h-8 self-center" />
-    <Message v-else-if="comparisonStore.errors.pairs" severity="warn" class="text-start">
-      {{ comparisonStore.errors.pairs }}
-    </Message>
+    <div v-if="comparisonStore.loading.pairs" class="flex flex-col gap-2 self-center">
+      <UIcon name="mdi:loading" class="w-8 h-8 animate-spin" />
+    </div>
+    <UAlert
+      v-else-if="comparisonStore.errors.pairs"
+      color="warning"
+      class="text-start"
+      :title="comparisonStore.errors.pairs"
+    />
     <template v-else-if="comparisonStore.pairsData">
-      <DataTable
+      <UTable
         v-if="comparisonStore.pairsData.pair_heatmap.length > 0"
-        :value="comparisonStore.pairsData.pair_heatmap"
-        size="small"
-        show-gridlines
-      >
-        <Column field="pair" header="Pair" />
-        <Column field="live_profit" header="Live" />
-        <Column field="bt_profit" header="Backtest" />
-        <Column field="diff" header="Diff" />
-      </DataTable>
+        :data="comparisonStore.pairsData.pair_heatmap"
+        :columns="pairHeatmapColumns"
+      />
       <EmptyComparisonState
         v-else
         title="Pair heatmap not populated yet"

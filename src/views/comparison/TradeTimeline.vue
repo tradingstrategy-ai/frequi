@@ -22,10 +22,15 @@ watch(
 
 <template>
   <div class="flex flex-col gap-4">
-    <ProgressSpinner v-if="comparisonStore.loading.timeline" class="w-8 h-8 self-center" />
-    <Message v-else-if="comparisonStore.errors.timeline" severity="warn" class="text-start">
-      {{ comparisonStore.errors.timeline }}
-    </Message>
+    <div v-if="comparisonStore.loading.timeline" class="flex flex-col gap-2 self-center">
+      <UIcon name="mdi:loading" class="w-8 h-8 animate-spin" />
+    </div>
+    <UAlert
+      v-else-if="comparisonStore.errors.timeline"
+      color="warning"
+      class="text-start"
+      :title="comparisonStore.errors.timeline"
+    />
     <template v-else-if="comparisonStore.timelineData">
       <EmptyComparisonState
         v-if="
