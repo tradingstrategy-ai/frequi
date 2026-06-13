@@ -53,26 +53,20 @@ function openPreset(presetBot: PresetBotDefinition) {
         class="border rounded-md p-3 text-start flex flex-col gap-2"
       >
         <div class="flex items-center gap-2">
-          <Badge
-            :value="presetBot.botType"
-            :severity="presetBot.botType === 'FT' ? 'info' : 'contrast'"
-          />
+          <UBadge :color="presetBot.botType === 'FT' ? 'info' : 'primary'">
+            {{ presetBot.botType }}
+          </UBadge>
           <span class="font-semibold">{{ presetBot.botName }}</span>
-          <Badge
-            v-if="presetBot.botId in botStore.availableBots"
-            value="Connected"
-            severity="success"
-          />
+          <UBadge v-if="presetBot.botId in botStore.availableBots" color="success">
+            Connected
+          </UBadge>
         </div>
         <div class="text-sm text-surface-500">{{ presetBot.description }}</div>
         <code class="text-xs break-all">{{ presetBot.botUrl }}</code>
         <div class="flex justify-end">
-          <Button size="small" severity="secondary" @click="openPreset(presetBot)">
-            <template #icon>
-              <i-mdi-login />
-            </template>
+          <UButton size="sm" color="neutral" icon="mdi:login" @click="openPreset(presetBot)">
             {{ presetBot.botId in botStore.availableBots ? 'Reconnect' : 'Connect' }}
-          </Button>
+          </UButton>
         </div>
       </div>
     </div>
