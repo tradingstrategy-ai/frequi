@@ -3,6 +3,13 @@ import { useComparison } from '@/composables/useComparison';
 
 const { comparisonStore, activeBotId, activeTimerange } = useComparison();
 
+const slippageColumns = [
+  { accessorKey: 'pair', header: 'Pair' },
+  { accessorKey: 'avg_entry_slippage_pct', header: 'Entry Slippage' },
+  { accessorKey: 'avg_exit_slippage_pct', header: 'Exit Slippage' },
+  { accessorKey: 'trade_count', header: 'Trades' },
+];
+
 async function loadTrades() {
   if (!activeBotId.value || !comparisonStore.isActiveBotSupported) return;
   comparisonStore.setTimerange(activeTimerange.value);
@@ -22,22 +29,21 @@ watch(
 
 <template>
   <div class="flex flex-col gap-4">
-    <ProgressSpinner v-if="comparisonStore.loading.trades" class="w-8 h-8 self-center" />
-    <Message v-else-if="comparisonStore.errors.trades" severity="warn" class="text-start">
-      {{ comparisonStore.errors.trades }}
-    </Message>
+    <div v-if="comparisonStore.loading.trades" class="flex flex-col gap-2 self-center">
+      <UIcon name="mdi:loading" class="w-8 h-8 animate-spin" />
+    </div>
+    <UAlert
+      v-else-if="comparisonStore.errors.trades"
+      color="warning"
+      class="text-start"
+      :title="comparisonStore.errors.trades"
+    />
     <template v-else-if="comparisonStore.tradesData">
-      <DataTable
+      <UTable
         v-if="comparisonStore.tradesData.slippage.length > 0"
-        :value="comparisonStore.tradesData.slippage"
-        size="small"
-        show-gridlines
-      >
-        <Column field="pair" header="Pair" />
-        <Column field="avg_entry_slippage_pct" header="Entry Slippage" />
-        <Column field="avg_exit_slippage_pct" header="Exit Slippage" />
-        <Column field="trade_count" header="Trades" />
-      </DataTable>
+        :data="comparisonStore.tradesData.slippage"
+        :columns="slippageColumns"
+      />
       <EmptyComparisonState
         v-else
         title="Trade deep dive not populated yet"

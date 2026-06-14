@@ -1,22 +1,30 @@
 <script setup lang="ts">
 import type { MonthlyHeatmapRow } from '@/types';
 
-defineProps<{
+const props = defineProps<{
   rows: MonthlyHeatmapRow[];
 }>();
+
+const columns = [
+  { accessorKey: 'year', header: 'Year' },
+  { accessorKey: 'month', header: 'Month' },
+  {
+    accessorKey: 'live_return',
+    header: 'Live Return',
+    cell: ({ row }: { row: { original: MonthlyHeatmapRow } }) =>
+      `${formatDecimal(row.original.live_return)}%`,
+  },
+  {
+    accessorKey: 'bt_return',
+    header: 'Backtest Return',
+    cell: ({ row }: { row: { original: MonthlyHeatmapRow } }) =>
+      `${formatDecimal(row.original.bt_return)}%`,
+  },
+];
 </script>
 
 <template>
-  <DataTable v-if="rows.length > 0" :value="rows" size="small" show-gridlines>
-    <Column field="year" header="Year" />
-    <Column field="month" header="Month" />
-    <Column field="live_return" header="Live Return">
-      <template #body="{ data }">{{ formatDecimal(data.live_return) }}%</template>
-    </Column>
-    <Column field="bt_return" header="Backtest Return">
-      <template #body="{ data }">{{ formatDecimal(data.bt_return) }}%</template>
-    </Column>
-  </DataTable>
+  <UTable v-if="props.rows.length > 0" :data="props.rows" :columns="columns" />
   <EmptyComparisonState
     v-else
     title="No monthly heatmap rows"

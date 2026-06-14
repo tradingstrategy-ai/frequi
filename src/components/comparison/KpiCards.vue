@@ -52,14 +52,12 @@ const cards = computed(() => {
 
 <template>
   <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-    <Card v-for="card in cards" :key="card.label">
-      <template #title>{{ card.label }}</template>
-      <template #content>
-        <div class="flex flex-col gap-1 text-start">
-          <div><span class="text-surface-500">Live:</span> {{ card.live }}</div>
-          <div><span class="text-surface-500">Backtest:</span> {{ card.bt }}</div>
-        </div>
-      </template>
-    </Card>
+    <UCard v-for="card in cards" :key="card.label">
+      <div class="text-lg font-semibold mb-2">{{ card.label }}</div>
+      <div class="flex flex-col gap-1 text-start">
+        <div><span class="text-surface-500">Live:</span> {{ card.live }}</div>
+        <div><span class="text-surface-500">Backtest:</span> {{ card.bt }}</div>
+      </div>
+    </UCard>
   </div>
 </template>
