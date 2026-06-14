@@ -56,8 +56,8 @@ export function seedDemoPresetBots(force = false): string[] {
       ? 'ichiv3-ls-hyperliquid-live'
       : nextLoginInfos['ichiv2-ls-hyperliquid-live']
         ? 'ichiv2-ls-hyperliquid-live'
-        : nextLoginInfos['nt-multi-strategy']
-          ? 'nt-multi-strategy'
+        : nextLoginInfos['nt-opencz-vault']
+          ? 'nt-opencz-vault'
           : seeded[0];
     if (preferred) {
       localStorage.setItem(AUTH_SELECTED_BOT, preferred);
