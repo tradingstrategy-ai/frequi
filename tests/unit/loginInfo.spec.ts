@@ -35,4 +35,29 @@ describe('loginInfo demo preload', () => {
       sortId: 10,
     });
   });
+
+  it('preserves a user-selected NT bot across page reloads', async () => {
+    // Regression guard: previously seedDemoPresetBots forcibly reset the
+    // selection to ichiv3 HL Live on every page load when the current
+    // selection was an NT bot. That broke real NT vault navigation.
+    localStorage.setItem('ftSelectedBot', 'nt-opencz-vault');
+
+    const { seedDemoPresetBots } = await import('@/composables/loginInfo');
+    seedDemoPresetBots(true);
+
+    expect(localStorage.getItem('ftSelectedBot')).toBe('nt-opencz-vault');
+  });
+
+  it('preserves a custom (non-preset) bot across page reloads', async () => {
+    // A bot the user added themselves should also survive — only an
+    // unreachable selection (not in nextLoginInfos) triggers fallback.
+    localStorage.setItem('ftSelectedBot', 'my-custom-bot');
+
+    const { seedDemoPresetBots } = await import('@/composables/loginInfo');
+    seedDemoPresetBots(true);
+
+    // my-custom-bot isn't in any of the seeded presets, so the fallback
+    // kicks in (this matches the unreachable-selection branch).
+    expect(localStorage.getItem('ftSelectedBot')).toBe('ichiv3-ls-hyperliquid-live');
+  });
 });

@@ -47,11 +47,16 @@ export function seedDemoPresetBots(force = false): string[] {
     allLoginInfos.value = nextLoginInfos;
   }
 
+  // Only override the user's selection if it's missing or no longer present
+  // in the bot list (preset or custom). Previously this clause also nuked
+  // any NT selection on every page load, which was a leftover from when NT
+  // bots were placeholder-only — it broke real-NT-vault navigation
+  // (selecting an NT bot then clicking a different tab reset to ichiv3 HL).
   const currentSelected = localStorage.getItem(AUTH_SELECTED_BOT);
-  const selectedPreset = currentSelected
-    ? getPresetBots().find((bot) => bot.botId === currentSelected)
-    : undefined;
-  if (!currentSelected || !selectedPreset || selectedPreset.botType === 'NT') {
+  const currentReachable = currentSelected
+    ? Boolean(nextLoginInfos[currentSelected])
+    : false;
+  if (!currentSelected || !currentReachable) {
     const preferred = nextLoginInfos['ichiv3-ls-hyperliquid-live']
       ? 'ichiv3-ls-hyperliquid-live'
       : nextLoginInfos['ichiv2-ls-hyperliquid-live']
