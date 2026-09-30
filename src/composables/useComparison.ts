@@ -1,11 +1,14 @@
 import { useComparisonStore } from '@/stores/comparisonStore';
 
 export function useComparison() {
-  const botStore = useBotStore();
   const comparisonStore = useComparisonStore();
   const route = useRoute();
 
-  const activeBotId = computed(() => botStore.selectedBot);
+  const activeBotId = computed(() => comparisonStore.selectedBotId);
+  const activeSleeve = computed(() => {
+    if (typeof route.query.sleeve === 'string') return route.query.sleeve;
+    return comparisonStore.selectedSleeve;
+  });
   const activeTimerange = computed(() => {
     if (typeof route.query.timerange === 'string') {
       return route.query.timerange;
@@ -14,19 +17,14 @@ export function useComparison() {
   });
 
   const activeBotName = computed(() => {
-    return (
-      comparisonStore.activeComparisonBot?.display_name ??
-      botStore.selectedBotObj?.botName ??
-      botStore.activeBotorUndefined?.botName ??
-      activeBotId.value
-    );
+    return comparisonStore.activeComparisonBot?.display_name ?? activeBotId.value;
   });
 
   return {
-    botStore,
     comparisonStore,
     activeBotId,
     activeBotName,
     activeTimerange,
+    activeSleeve,
   };
 }

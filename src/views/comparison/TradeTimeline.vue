@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { useComparison } from '@/composables/useComparison';
 
-const { comparisonStore, activeBotId, activeTimerange } = useComparison();
+const { comparisonStore, activeBotId, activeTimerange, activeSleeve } = useComparison();
 
 async function loadTimeline() {
+  await comparisonStore.ensureComparisonBots();
   if (!activeBotId.value || !comparisonStore.isActiveBotSupported) return;
+  comparisonStore.setSelectedSleeve(activeSleeve.value);
   comparisonStore.setTimerange(activeTimerange.value);
   await comparisonStore.loadTimeline(activeBotId.value, activeTimerange.value);
 }
@@ -15,7 +17,7 @@ onMounted(async () => {
 });
 
 watch(
-  () => [activeBotId.value, activeTimerange.value, comparisonStore.isActiveBotSupported],
+  () => [activeBotId.value, activeTimerange.value, activeSleeve.value, comparisonStore.isActiveBotSupported, comparisonStore.report?.snapshot_id],
   async () => loadTimeline(),
 );
 </script>
@@ -61,5 +63,7 @@ watch(
         empty-text="No unmatched trade payload was returned."
       />
     </template>
+    <EmptyComparisonState v-else title="No report timeline data"
+      detail="Choose a report from the comparison catalog to view its timeline." />
   </div>
 </template>

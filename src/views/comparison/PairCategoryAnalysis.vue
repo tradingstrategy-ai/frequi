@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { useComparison } from '@/composables/useComparison';
 
-const { comparisonStore, activeBotId, activeTimerange } = useComparison();
+const { comparisonStore, activeBotId, activeTimerange, activeSleeve } = useComparison();
 
 const pairHeatmapColumns = [
   { accessorKey: 'pair', header: 'Pair' },
-  { accessorKey: 'live_profit', header: 'Live' },
-  { accessorKey: 'bt_profit', header: 'Backtest' },
-  { accessorKey: 'diff', header: 'Diff' },
+  { accessorKey: 'live_profit', header: 'Live', cell: ({ row }: { row: { original: { live_profit: number | null } } }) => row.original.live_profit ?? 'N/A' },
+  { accessorKey: 'bt_profit', header: 'Backtest', cell: ({ row }: { row: { original: { bt_profit: number | null } } }) => row.original.bt_profit ?? 'N/A' },
+  { accessorKey: 'diff', header: 'Diff', cell: ({ row }: { row: { original: { diff: number | null } } }) => row.original.diff ?? 'N/A' },
 ];
 
 async function loadPairs() {
+  await comparisonStore.ensureComparisonBots();
   if (!activeBotId.value || !comparisonStore.isActiveBotSupported) return;
+  comparisonStore.setSelectedSleeve(activeSleeve.value);
   comparisonStore.setTimerange(activeTimerange.value);
   await comparisonStore.loadPairs(activeBotId.value, activeTimerange.value);
 }
@@ -22,7 +24,7 @@ onMounted(async () => {
 });
 
 watch(
-  () => [activeBotId.value, activeTimerange.value, comparisonStore.isActiveBotSupported],
+  () => [activeBotId.value, activeTimerange.value, activeSleeve.value, comparisonStore.isActiveBotSupported, comparisonStore.report?.snapshot_id],
   async () => loadPairs(),
 );
 </script>
@@ -66,5 +68,7 @@ watch(
         empty-text="No market-cap category payload was returned."
       />
     </template>
+    <EmptyComparisonState v-else title="No report pair data"
+      detail="Choose a report from the comparison catalog to view pair and category analysis." />
   </div>
 </template>

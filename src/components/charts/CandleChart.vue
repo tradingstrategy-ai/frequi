@@ -123,14 +123,15 @@ function generateBtMarkerSeries(markers: BtMarker[]): ScatterSeriesOption {
   const markerData = markers.map((marker) => {
     const isEntry = marker.type === 'entry';
     const isLong = marker.direction === 'LONG';
+    const rotation = marker.direction === null ? 90 : isLong ? 0 : 180;
     return [
       new Date(marker.date).getTime(),
       marker.price,
       isEntry ? 'BT entry' : 'BT exit',
       marker.is_matched ? '#2563eb' : '#93c5fd',
-      isEntry ? (isLong ? 0 : 180) : isLong ? 180 : 0,
+      isEntry ? rotation : marker.direction === null ? 90 : isLong ? 180 : 0,
       marker.is_matched ? 0.95 : 0.55,
-      `${marker.direction} ${marker.type}${marker.is_matched ? '' : ' (BT only)'}`,
+      `${marker.direction ?? 'Unknown'} ${marker.type}${marker.is_matched ? '' : ' (BT only)'}`,
     ];
   });
 

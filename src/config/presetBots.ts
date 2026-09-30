@@ -10,7 +10,7 @@ function withDefault(value: string | undefined, fallback: string): string {
 }
 
 export function getComparisonApiBase(): string {
-  return withDefault(import.meta.env.VITE_COMPARISON_API_BASE, 'http://localhost:8100');
+  return '/api/comparison';
 }
 
 // Tailscale defaults for the live deployment. Override per-bot via VITE_* env vars in

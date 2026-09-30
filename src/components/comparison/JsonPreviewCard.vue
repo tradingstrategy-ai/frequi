@@ -15,7 +15,18 @@ const hasContent = computed(() => {
   return Boolean(props.payload);
 });
 
-const formatted = computed(() => JSON.stringify(props.payload, null, 2));
+function withUnknownDirection(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withUnknownDirection);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+      key,
+      key === 'direction' && child === null ? 'Unknown' : withUnknownDirection(child),
+    ]));
+  }
+  return value;
+}
+
+const formatted = computed(() => JSON.stringify(withUnknownDirection(props.payload), null, 2));
 </script>
 
 <template>

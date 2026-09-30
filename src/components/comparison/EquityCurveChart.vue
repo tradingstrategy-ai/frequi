@@ -17,13 +17,13 @@ use([LineChart, GridComponent, LegendComponent, TitleComponent, TooltipComponent
 
 const props = defineProps<{
   equityCurve: EquityCurveData;
-  mode?: 'percent' | 'share_price';
+  mode?: 'percent' | 'share_price' | 'account_balance';
 }>();
 
 const displayMode = computed(() => props.mode ?? 'percent');
 
 const hasData = computed(
-  () => props.equityCurve.live.length > 0 || props.equityCurve.bt.length > 0,
+  () => [...props.equityCurve.live, ...props.equityCurve.bt].some((point) => point.value !== null),
 );
 
 const chartOptions = computed<EChartsOption>(() => {
@@ -50,10 +50,16 @@ const chartOptions = computed<EChartsOption>(() => {
     },
     yAxis: {
       type: 'value',
-      name: displayMode.value === 'share_price' ? 'Share Price' : 'Profit %',
+      name: displayMode.value === 'account_balance'
+        ? 'Account Balance'
+        : displayMode.value === 'share_price' ? 'Share Price' : 'Profit %',
       axisLabel: {
-        formatter: (value: number) =>
-          displayMode.value === 'share_price' ? value.toFixed(4) : `${value}%`,
+        formatter: (value: number) => {
+          if (displayMode.value === 'account_balance') {
+            return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+          }
+          return displayMode.value === 'share_price' ? value.toFixed(4) : `${value}%`;
+        },
       },
     },
     series: [
@@ -77,12 +83,12 @@ const chartOptions = computed<EChartsOption>(() => {
 </script>
 
 <template>
-  <div class="min-h-[280px]">
-    <ECharts v-if="hasData" autoresize :option="chartOptions" />
+  <div class="h-[280px]">
+    <ECharts v-if="hasData" class="h-full w-full" autoresize :option="chartOptions" />
     <EmptyComparisonState
       v-else
       title="No equity curve data"
-      detail="The comparison backend has not returned any live or backtest equity points yet."
+      detail="No account balance points are available for this report view."
     />
   </div>
 </template>

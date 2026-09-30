@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { useComparison } from '@/composables/useComparison';
 
-const { comparisonStore, activeBotId, activeTimerange } = useComparison();
-const equityCurveMode = computed(() =>
-  comparisonStore.activeComparisonBot?.is_vault ? 'share_price' : 'percent',
-);
+const { comparisonStore, activeBotId, activeTimerange, activeSleeve } = useComparison();
+const equityCurveMode = 'account_balance' as const;
+const hasAccountBalanceSeries = computed(() => [
+  ...(comparisonStore.overviewData?.equity_curve.live ?? []),
+  ...(comparisonStore.overviewData?.equity_curve.bt ?? []),
+].some((point) => point.value !== null));
 
 async function loadOverview() {
+  await comparisonStore.ensureComparisonBots();
   if (!activeBotId.value || !comparisonStore.isActiveBotSupported) return;
+  comparisonStore.setSelectedSleeve(activeSleeve.value);
   comparisonStore.setTimerange(activeTimerange.value);
   await comparisonStore.loadOverview(activeBotId.value, activeTimerange.value);
 }
@@ -18,7 +22,7 @@ onMounted(async () => {
 });
 
 watch(
-  () => [activeBotId.value, activeTimerange.value, comparisonStore.isActiveBotSupported],
+  () => [activeBotId.value, activeTimerange.value, activeSleeve.value, comparisonStore.isActiveBotSupported, comparisonStore.report?.snapshot_id],
   async () => loadOverview(),
 );
 </script>
@@ -43,6 +47,12 @@ watch(
 
       <UCard>
         <div class="text-lg font-semibold mb-2">Equity Curve</div>
+        <UAlert v-if="activeTimerange" color="info" class="mb-3 text-start"
+          title="Account series are unavailable for an entry-date timerange"
+          description="The timerange selects trades by entry date, while account balance, daily profit, and monthly return series use close-date accounting. Showing them together would include profits from trades outside the selected entry cohort." />
+        <p v-if="hasAccountBalanceSeries" class="mb-2 text-sm text-surface-500">
+          Realized account balance, updated at trade close.
+        </p>
         <EquityCurveChart
           :equity-curve="comparisonStore.overviewData.equity_curve"
           :mode="equityCurveMode"

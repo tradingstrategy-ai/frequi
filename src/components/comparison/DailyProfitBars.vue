@@ -13,6 +13,7 @@ use([BarChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]
 const props = defineProps<{
   rows: DailyProfitBar[];
 }>();
+const hasData = computed(() => props.rows.some((row) => row.live_profit !== null || row.bt_profit !== null));
 
 const chartOptions = computed<EChartsOption>(() => {
   return {
@@ -43,7 +44,7 @@ const chartOptions = computed<EChartsOption>(() => {
 
 <template>
   <div class="min-h-[260px]">
-    <ECharts v-if="rows.length > 0" autoresize :option="chartOptions" />
+    <ECharts v-if="hasData" autoresize :option="chartOptions" />
     <EmptyComparisonState
       v-else
       title="No daily profit breakdown"

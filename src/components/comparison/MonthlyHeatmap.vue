@@ -12,13 +12,13 @@ const columns = [
     accessorKey: 'live_return',
     header: 'Live Return',
     cell: ({ row }: { row: { original: MonthlyHeatmapRow } }) =>
-      `${formatDecimal(row.original.live_return)}%`,
+      row.original.live_return === null ? 'N/A' : `${formatDecimal(row.original.live_return)}%`,
   },
   {
     accessorKey: 'bt_return',
     header: 'Backtest Return',
     cell: ({ row }: { row: { original: MonthlyHeatmapRow } }) =>
-      `${formatDecimal(row.original.bt_return)}%`,
+      row.original.bt_return === null ? 'N/A' : `${formatDecimal(row.original.bt_return)}%`,
   },
 ];
 </script>
