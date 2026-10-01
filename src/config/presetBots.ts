@@ -136,6 +136,39 @@ export function getPresetBots(): PresetBotDefinition[] {
       botType: 'NT',
       description: 'Nautilus Weekend Wick revert strategy vault.',
     },
+    // --- Production bots (same-origin routes protected by reports BasicAuth) ---
+    {
+      botId: 'orchestrator_gmx_ai_gmx_vault',
+      botName: 'GMX AI Vault',
+      botUrl: '/api/bots/gmx',
+      sortId: 40,
+      botType: 'FT',
+      description: 'GMX AI Vault via the same-origin reports proxy.',
+    },
+    {
+      botId: 'orchestrator_apex_vault',
+      botName: 'Apex Vault',
+      botUrl: '/api/bots/apex',
+      sortId: 41,
+      botType: 'FT',
+      description: 'Apex Vault via the same-origin reports proxy.',
+    },
+    {
+      botId: 'dipbuyer_apex_standalone',
+      botName: 'DipBuyer Apex',
+      botUrl: '/api/bots/dipbuyer',
+      sortId: 42,
+      botType: 'FT',
+      description: 'DipBuyer Apex via the same-origin reports proxy.',
+    },
+    {
+      botId: 'derive-2sleeve-mainnet',
+      botName: 'Derive 2 Sleeve',
+      botUrl: '/api/bots/derive',
+      sortId: 43,
+      botType: 'NT',
+      description: 'Derive two-sleeve runner via the same-origin reports proxy.',
+    },
   ];
 }
 

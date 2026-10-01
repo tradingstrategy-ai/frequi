@@ -29,6 +29,11 @@ describe('presetBots', () => {
       'nt-contrarian-funding',
       'nt-rwa-vault',
       'nt-weekend-wick',
+      // Production bot APIs are proxied through the FreqUI origin.
+      'orchestrator_gmx_ai_gmx_vault',
+      'orchestrator_apex_vault',
+      'dipbuyer_apex_standalone',
+      'derive-2sleeve-mainnet',
     ]);
     expect(getComparisonApiBase()).toBe('/api/comparison');
 
@@ -56,7 +61,46 @@ describe('presetBots', () => {
       'nt-contrarian-funding': 'http://100.90.145.1:8111',
       'nt-rwa-vault': 'http://100.90.145.1:8121',
       'nt-weekend-wick': 'http://100.90.145.1:8131',
+      orchestrator_gmx_ai_gmx_vault: '/api/bots/gmx',
+      orchestrator_apex_vault: '/api/bots/apex',
+      dipbuyer_apex_standalone: '/api/bots/dipbuyer',
+      'derive-2sleeve-mainnet': '/api/bots/derive',
     });
+
+    expect(presetBots).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          botId: 'orchestrator_gmx_ai_gmx_vault',
+          botName: 'GMX AI Vault',
+          botUrl: '/api/bots/gmx',
+          botType: 'FT',
+        }),
+        expect.objectContaining({
+          botId: 'orchestrator_apex_vault',
+          botName: 'Apex Vault',
+          botUrl: '/api/bots/apex',
+          botType: 'FT',
+        }),
+        expect.objectContaining({
+          botId: 'dipbuyer_apex_standalone',
+          botName: 'DipBuyer Apex',
+          botUrl: '/api/bots/dipbuyer',
+          botType: 'FT',
+        }),
+        expect.objectContaining({
+          botId: 'derive-2sleeve-mainnet',
+          botName: 'Derive 2 Sleeve',
+          botUrl: '/api/bots/derive',
+          botType: 'NT',
+        }),
+      ]),
+    );
+    for (const bot of presetBots) {
+      expect(bot).not.toHaveProperty('username');
+      expect(bot).not.toHaveProperty('password');
+      expect(bot).not.toHaveProperty('accessToken');
+      expect(bot).not.toHaveProperty('refreshToken');
+    }
 
     expect(isPresetBotId('nt-opencz-vault')).toBe(true);
     expect(isPresetBotId('ftbot.1')).toBe(false);
@@ -70,7 +114,7 @@ describe('presetBots', () => {
     const presetBots = getPresetBots();
     const ftBots = presetBots.filter((b) => b.botType === 'FT');
     const ntBots = presetBots.filter((b) => b.botType === 'NT');
-    expect(ftBots.length).toBe(10);
-    expect(ntBots.length).toBe(4);
+    expect(ftBots.length).toBe(13);
+    expect(ntBots.length).toBe(5);
   });
 });

@@ -1,6 +1,14 @@
 import type { AxiosResponse } from 'axios';
 import axios from 'axios';
 import { getPresetBots } from '@/config/presetBots';
+import {
+  BOT_AUTHORIZATION_HEADER,
+  encodeBasicAuthorization,
+  getBotAuthorizationHeaderName,
+  isProxiedBotUrl,
+  isReportsAuthChallenge,
+} from '@/utils/botAuthorization';
+import { requireReportsAuth } from '@/composables/reportsAuth';
 
 import type {
   AuthPayload,
@@ -53,9 +61,7 @@ export function seedDemoPresetBots(force = false): string[] {
   // bots were placeholder-only — it broke real-NT-vault navigation
   // (selecting an NT bot then clicking a different tab reset to ichiv3 HL).
   const currentSelected = localStorage.getItem(AUTH_SELECTED_BOT);
-  const currentReachable = currentSelected
-    ? Boolean(nextLoginInfos[currentSelected])
-    : false;
+  const currentReachable = currentSelected ? Boolean(nextLoginInfos[currentSelected]) : false;
   if (!currentSelected || !currentReachable) {
     const preferred = nextLoginInfos['ichiv3-ls-hyperliquid-live']
       ? 'ichiv3-ls-hyperliquid-live'
@@ -127,6 +133,15 @@ export function useLoginInfo(botId: string) {
     if (baseURL.startsWith('https://')) {
       return baseURL.replace('https://', 'wss://');
     }
+    if (isProxiedBotUrl(baseURL)) {
+      // Same-origin proxy route, so the upgrade is gated by the reports
+      // BasicAuth credentials the bootstrap route established - the browser
+      // attaches those itself. A handshake cannot carry a custom header, so
+      // the bot's own auth is the ?token= JWT query freqtrade expects.
+      const { pathname, search } = new URL(baseURL, window.location.origin);
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${protocol}//${window.location.host}${pathname}${search}`;
+    }
     return '';
   });
 
@@ -163,11 +178,18 @@ export function useLoginInfo(botId: string) {
   }
 
   async function loginCall(auth: AuthPayload): Promise<AuthStorage> {
+    const usesReportsProxy = isProxiedBotUrl(auth.url);
     const { data } = await axios.post<Record<string, never>, AxiosResponse<AuthResponse>>(
       `${auth.url}/api/v1/token/login`,
       {},
       {
-        auth: { ...auth },
+        ...(usesReportsProxy
+          ? {
+              headers: {
+                [BOT_AUTHORIZATION_HEADER]: encodeBasicAuthorization(auth.username, auth.password),
+              },
+            }
+          : { auth: { username: auth.username, password: auth.password } }),
         withCredentials: true,
       },
     );
@@ -199,7 +221,9 @@ export function useLoginInfo(botId: string) {
           `${currentInfo.value.apiUrl}${APIBASE}/token/refresh`,
           {},
           {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: {
+              [getBotAuthorizationHeaderName(currentInfo.value.apiUrl)]: `Bearer ${token}`,
+            },
           },
         )
         .then((response) => {
@@ -210,7 +234,13 @@ export function useLoginInfo(botId: string) {
         })
         .catch((err) => {
           console.error(err);
-          if (err.response && err.response.status === 401) {
+          if (err.response && isReportsAuthChallenge(err.response.headers)) {
+            // Caddy's reports gate refused the refresh, so the bot never saw
+            // it. Keeping the refresh token means restoring reports auth is
+            // enough to carry on - clearing it would force a full re-login.
+            console.log('Reports authentication required - refresh was not proxied.');
+            requireReportsAuth();
+          } else if (err.response && err.response.status === 401) {
             console.log('Refresh token did not refresh.');
             setRefreshTokenExpired();
           } else if (err.response && (err.response.status === 500 || err.response.status === 404)) {
