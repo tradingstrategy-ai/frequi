@@ -10,6 +10,7 @@ import {
   REPORTS_AUTH_BOOTSTRAP_URL,
   REPORTS_AUTH_CHECK_URL,
 } from '@/utils/botAuthorization';
+import { findProxiedBotRoute } from '@/utils/knownBotUrls';
 
 const props = withDefaults(
   defineProps<{
@@ -57,6 +58,10 @@ const urlDuplicate = computed<boolean>(() => {
   return !botEdit.value && bots !== undefined;
 });
 
+// A direct address of a known production bot is cross-origin here and would fail
+// on the bot's CORS policy, so it is connected through the same-origin proxy.
+const proxiedRoute = computed<string | undefined>(() => findProxiedBotRoute(auth.value.url));
+
 function canRequireCorsConfiguration(apiUrl: string): boolean {
   try {
     return new URL(apiUrl, window.location.origin).origin !== window.location.origin;
@@ -100,6 +105,9 @@ async function handleSubmit() {
   // Exit when the form isn't valid
   if (!checkFormValidity()) {
     return;
+  }
+  if (proxiedRoute.value !== undefined) {
+    auth.value.url = proxiedRoute.value;
   }
   errorMessage.value = '';
   errorMessageCORS.value = false;
@@ -251,6 +259,17 @@ watch(
         class="mt-1 block w-full"
         @keydown.enter="handleOk"
       />
+      <UAlert
+        v-if="proxiedRoute"
+        class="mt-2"
+        color="info"
+        title="Connecting through the dashboard proxy"
+      >
+        <template #description>
+          This bot is reached through <code>{{ proxiedRoute }}</code> on this site, so its CORS
+          settings do not apply. Submit will use that address.
+        </template>
+      </UAlert>
       <UAlert
         v-if="urlDuplicate"
         class="mt-2"
