@@ -39,13 +39,15 @@ const rows = computed(() => {
     };
   });
 });
+
+const columns = [
+  { accessorKey: 'label', header: 'Metric' },
+  { accessorKey: 'live', header: 'Live' },
+  { accessorKey: 'bt', header: 'Backtest' },
+  { accessorKey: 'delta', header: 'Delta' },
+];
 </script>
 
 <template>
-  <DataTable :value="rows" size="small" show-gridlines>
-    <Column field="label" header="Metric" />
-    <Column field="live" header="Live" />
-    <Column field="bt" header="Backtest" />
-    <Column field="delta" header="Delta" />
-  </DataTable>
+  <UTable :data="rows" :columns="columns" />
 </template>

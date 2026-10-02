@@ -12,8 +12,9 @@ withDefaults(
 </script>
 
 <template>
-  <Message severity="info" class="text-start">
-    <div class="font-semibold">{{ title }}</div>
-    <div class="text-sm mt-1">{{ detail }}</div>
-  </Message>
+  <UAlert color="info" class="text-start" :title="title">
+    <template #description>
+      <div class="text-sm">{{ detail }}</div>
+    </template>
+  </UAlert>
 </template>

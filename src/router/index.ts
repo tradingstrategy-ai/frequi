@@ -23,6 +23,7 @@ const routes: Array<RouteRecordRaw> = [
   {
     path: '/compare',
     component: () => import('@/views/comparison/ComparisonLayout.vue'),
+    meta: { allowAnonymous: true },
     children: [
       {
         path: '',
@@ -120,7 +121,10 @@ const router = createRouter({
 });
 
 router.beforeEach((to) => {
-  // Init bots here...
+  // Comparison has its own report-backed selection and works before any Freqtrade login.
+  if (to.path === '/compare' || to.path.startsWith('/compare/')) return true;
+
+  // Init normal trading bots here...
   initBots();
   const botStore = useBotStore();
   if (!to.meta?.allowAnonymous && !botStore.hasBots) {

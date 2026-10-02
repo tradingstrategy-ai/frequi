@@ -1,10 +1,19 @@
 <script setup lang="ts">
 import { useComparison } from '@/composables/useComparison';
 
-const { comparisonStore, activeBotId, activeTimerange } = useComparison();
+const { comparisonStore, activeBotId, activeTimerange, activeSleeve } = useComparison();
+
+const pairHeatmapColumns = [
+  { accessorKey: 'pair', header: 'Pair' },
+  { accessorKey: 'live_profit', header: 'Live', cell: ({ row }: { row: { original: { live_profit: number | null } } }) => row.original.live_profit ?? 'N/A' },
+  { accessorKey: 'bt_profit', header: 'Backtest', cell: ({ row }: { row: { original: { bt_profit: number | null } } }) => row.original.bt_profit ?? 'N/A' },
+  { accessorKey: 'diff', header: 'Diff', cell: ({ row }: { row: { original: { diff: number | null } } }) => row.original.diff ?? 'N/A' },
+];
 
 async function loadPairs() {
+  await comparisonStore.ensureComparisonBots();
   if (!activeBotId.value || !comparisonStore.isActiveBotSupported) return;
+  comparisonStore.setSelectedSleeve(activeSleeve.value);
   comparisonStore.setTimerange(activeTimerange.value);
   await comparisonStore.loadPairs(activeBotId.value, activeTimerange.value);
 }
@@ -15,29 +24,28 @@ onMounted(async () => {
 });
 
 watch(
-  () => [activeBotId.value, activeTimerange.value, comparisonStore.isActiveBotSupported],
+  () => [activeBotId.value, activeTimerange.value, activeSleeve.value, comparisonStore.isActiveBotSupported, comparisonStore.report?.snapshot_id],
   async () => loadPairs(),
 );
 </script>
 
 <template>
   <div class="flex flex-col gap-4">
-    <ProgressSpinner v-if="comparisonStore.loading.pairs" class="w-8 h-8 self-center" />
-    <Message v-else-if="comparisonStore.errors.pairs" severity="warn" class="text-start">
-      {{ comparisonStore.errors.pairs }}
-    </Message>
+    <div v-if="comparisonStore.loading.pairs" class="flex flex-col gap-2 self-center">
+      <UIcon name="mdi:loading" class="w-8 h-8 animate-spin" />
+    </div>
+    <UAlert
+      v-else-if="comparisonStore.errors.pairs"
+      color="warning"
+      class="text-start"
+      :title="comparisonStore.errors.pairs"
+    />
     <template v-else-if="comparisonStore.pairsData">
-      <DataTable
+      <UTable
         v-if="comparisonStore.pairsData.pair_heatmap.length > 0"
-        :value="comparisonStore.pairsData.pair_heatmap"
-        size="small"
-        show-gridlines
-      >
-        <Column field="pair" header="Pair" />
-        <Column field="live_profit" header="Live" />
-        <Column field="bt_profit" header="Backtest" />
-        <Column field="diff" header="Diff" />
-      </DataTable>
+        :data="comparisonStore.pairsData.pair_heatmap"
+        :columns="pairHeatmapColumns"
+      />
       <EmptyComparisonState
         v-else
         title="Pair heatmap not populated yet"
@@ -60,5 +68,7 @@ watch(
         empty-text="No market-cap category payload was returned."
       />
     </template>
+    <EmptyComparisonState v-else title="No report pair data"
+      detail="Choose a report from the comparison catalog to view pair and category analysis." />
   </div>
 </template>

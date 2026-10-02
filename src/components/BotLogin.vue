@@ -4,6 +4,13 @@ import type { PresetBotDefinition } from '@/config/presetBots';
 
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
+import {
+  isProxiedBotUrl,
+  isReportsAuthChallenge,
+  REPORTS_AUTH_BOOTSTRAP_URL,
+  REPORTS_AUTH_CHECK_URL,
+} from '@/utils/botAuthorization';
+import { findProxiedBotRoute } from '@/utils/knownBotUrls';
 
 const props = withDefaults(
   defineProps<{
@@ -30,6 +37,7 @@ const pwdState = ref<boolean>();
 const urlState = ref<boolean>();
 const errorMessage = ref<string>('');
 const errorMessageCORS = ref<boolean>(false);
+const reportsAuthRequired = ref<boolean>(false);
 const formRef = ref<HTMLFormElement>();
 const botEdit = ref<boolean>(false);
 const auth = ref<AuthPayload>({
@@ -50,6 +58,22 @@ const urlDuplicate = computed<boolean>(() => {
   return !botEdit.value && bots !== undefined;
 });
 
+// A direct address of a known production bot is cross-origin here and would fail
+// on the bot's CORS policy, so it is connected through the same-origin proxy.
+const proxiedRoute = computed<string | undefined>(() => findProxiedBotRoute(auth.value.url));
+
+function canRequireCorsConfiguration(apiUrl: string): boolean {
+  try {
+    return new URL(apiUrl, window.location.origin).origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function getPingUrl(apiUrl: string): string {
+  return `${apiUrl.replace(/\/$/, '')}/api/v1/ping`;
+}
+
 function checkFormValidity() {
   const valid = formRef.value?.checkValidity();
   nameState.value = valid || auth.value.username !== '';
@@ -67,6 +91,8 @@ function resetLogin() {
   pwdState.value = undefined;
   urlState.value = undefined;
   errorMessage.value = '';
+  errorMessageCORS.value = false;
+  reportsAuthRequired.value = false;
   botEdit.value = false;
 }
 
@@ -80,9 +106,17 @@ async function handleSubmit() {
   if (!checkFormValidity()) {
     return;
   }
+  auth.value.url = proxiedRoute.value ?? auth.value.url.trim().replace(/\/+$/, '');
   errorMessage.value = '';
+  errorMessageCORS.value = false;
+  reportsAuthRequired.value = false;
   // Push the name to submitted names
   try {
+    if (isProxiedBotUrl(auth.value.url)) {
+      // Proving reports BasicAuth first means a later 401 can only have come
+      // from the bot. Direct bot URLs never touch this route.
+      await axios.get(REPORTS_AUTH_CHECK_URL, { withCredentials: true });
+    }
     const botId = props.existingAuth?.botId ?? props.presetBot?.botId ?? botStore.nextBotId;
     const { login } = useLoginInfo(botId);
     await login(auth.value);
@@ -131,15 +165,26 @@ async function handleSubmit() {
     errorMessageCORS.value = false;
     // this.nameState = false;
     console.error(error);
+    const fromPreflight = axios.isAxiosError(error) && error.config?.url === REPORTS_AUTH_CHECK_URL;
     if (axios.isAxiosError(error) && error.response && error.response.status === 401) {
-      nameState.value = false;
-      pwdState.value = false;
-      errorMessage.value = 'Connected to bot, however Login failed, Username or Password wrong.';
+      // The preflight's 401, or Caddy's challenge on the login call itself when
+      // reports auth lapsed in between, both mean the bot was never contacted.
+      if (fromPreflight || isReportsAuthChallenge(error.response.headers)) {
+        reportsAuthRequired.value = true;
+        errorMessage.value = 'Reports authentication is required before connecting to a bot.';
+      } else {
+        nameState.value = false;
+        pwdState.value = false;
+        errorMessage.value = 'Connected to bot, however Login failed, Username or Password wrong.';
+      }
+    } else if (fromPreflight) {
+      urlState.value = true;
+      errorMessage.value =
+        'Could not verify reports authentication with the proxy, so the bot was not contacted. Please check that the reports site is reachable.';
     } else {
-      urlState.value = false;
-      errorMessage.value = `Please verify that the bot is running, the Bot API is enabled and the URL is reachable.
-You can verify this by navigating to ${auth.value.url}/api/v1/ping to make sure the bot API is reachable`;
-      if (auth.value.url !== window.location.origin) {
+      urlState.value = true;
+      errorMessage.value = `Could not reach the bot API or its proxy. Please verify that the bot is running, the Bot API is enabled and ${getPingUrl(auth.value.url)} is reachable.`;
+      if (canRequireCorsConfiguration(auth.value.url)) {
         errorMessageCORS.value = true;
       }
     }
@@ -213,6 +258,17 @@ watch(
         @keydown.enter="handleOk"
       />
       <UAlert
+        v-if="proxiedRoute"
+        class="mt-2"
+        color="info"
+        title="Connecting through the dashboard proxy"
+      >
+        <template #description>
+          This bot is reached through <code>{{ proxiedRoute }}</code> on this site, so its CORS
+          settings do not apply. Submit will use that address.
+        </template>
+      </UAlert>
+      <UAlert
         v-if="urlDuplicate"
         class="mt-2"
         color="warning"
@@ -255,6 +311,13 @@ watch(
       >
         <template #description>
           {{ errorMessage }}
+          <a
+            v-if="reportsAuthRequired"
+            :href="REPORTS_AUTH_BOOTSTRAP_URL"
+            class="text-primary underline"
+          >
+            Connect to reports
+          </a>
           <span v-if="errorMessageCORS">
             Please also check your bot's CORS configuration:
             <a

@@ -1,6 +1,14 @@
 import type { AxiosResponse } from 'axios';
 import axios from 'axios';
 import { getPresetBots } from '@/config/presetBots';
+import {
+  BOT_AUTHORIZATION_HEADER,
+  encodeBasicAuthorization,
+  getBotAuthorizationHeaderName,
+  isProxiedBotUrl,
+  isReportsAuthChallenge,
+} from '@/utils/botAuthorization';
+import { requireReportsAuth } from '@/composables/reportsAuth';
 
 import type {
   AuthPayload,
@@ -15,6 +23,16 @@ const AUTH_LOGIN_INFO = 'ftAuthLoginInfo';
 const AUTH_SELECTED_BOT = 'ftSelectedBot';
 const APIBASE = '/api/v1';
 const PRELOAD_DEMO_BOTS = import.meta.env.DEV && import.meta.env.VITE_PRELOAD_DEMO_BOTS !== 'false';
+
+function apiBaseUrl(url: string | null | undefined): string {
+  const baseURL = (url ?? '').trim().replace(/\/+$/, '');
+  if (!baseURL) return APIBASE;
+  return baseURL.endsWith(APIBASE) ? baseURL : `${baseURL}${APIBASE}`;
+}
+
+function apiEndpointUrl(url: string, endpoint: string): string {
+  return `${apiBaseUrl(url)}/${endpoint.replace(/^\/+/, '')}`;
+}
 
 // Global state for all login infos
 const allLoginInfos = useStorage<AuthStorageMulti>(AUTH_LOGIN_INFO, {});
@@ -47,17 +65,20 @@ export function seedDemoPresetBots(force = false): string[] {
     allLoginInfos.value = nextLoginInfos;
   }
 
+  // Only override the user's selection if it's missing or no longer present
+  // in the bot list (preset or custom). Previously this clause also nuked
+  // any NT selection on every page load, which was a leftover from when NT
+  // bots were placeholder-only — it broke real-NT-vault navigation
+  // (selecting an NT bot then clicking a different tab reset to ichiv3 HL).
   const currentSelected = localStorage.getItem(AUTH_SELECTED_BOT);
-  const selectedPreset = currentSelected
-    ? getPresetBots().find((bot) => bot.botId === currentSelected)
-    : undefined;
-  if (!currentSelected || !selectedPreset || selectedPreset.botType === 'NT') {
+  const currentReachable = currentSelected ? Boolean(nextLoginInfos[currentSelected]) : false;
+  if (!currentSelected || !currentReachable) {
     const preferred = nextLoginInfos['ichiv3-ls-hyperliquid-live']
       ? 'ichiv3-ls-hyperliquid-live'
       : nextLoginInfos['ichiv2-ls-hyperliquid-live']
         ? 'ichiv2-ls-hyperliquid-live'
-        : nextLoginInfos['nt-multi-strategy']
-          ? 'nt-multi-strategy'
+        : nextLoginInfos['nt-opencz-vault']
+          ? 'nt-opencz-vault'
           : seeded[0];
     if (preferred) {
       localStorage.setItem(AUTH_SELECTED_BOT, preferred);
@@ -104,14 +125,7 @@ export function useLoginInfo(botId: string) {
   const accessToken = computed(() => currentInfo.value.accessToken);
 
   const baseUrl = computed<string>(() => {
-    const baseURL = currentInfo.value.apiUrl;
-    if (baseURL === null) {
-      return APIBASE;
-    }
-    if (!baseURL.endsWith(APIBASE)) {
-      return `${baseURL}${APIBASE}`;
-    }
-    return `${baseURL}${APIBASE}`;
+    return apiBaseUrl(currentInfo.value.apiUrl);
   });
 
   const baseWsUrl = computed<string>(() => {
@@ -121,6 +135,15 @@ export function useLoginInfo(botId: string) {
     }
     if (baseURL.startsWith('https://')) {
       return baseURL.replace('https://', 'wss://');
+    }
+    if (isProxiedBotUrl(baseURL)) {
+      // Same-origin proxy route, so the upgrade is gated by the reports
+      // BasicAuth credentials the bootstrap route established - the browser
+      // attaches those itself. A handshake cannot carry a custom header, so
+      // the bot's own auth is the ?token= JWT query freqtrade expects.
+      const { pathname, search } = new URL(baseURL, window.location.origin);
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${protocol}//${window.location.host}${pathname}${search}`;
     }
     return '';
   });
@@ -158,11 +181,18 @@ export function useLoginInfo(botId: string) {
   }
 
   async function loginCall(auth: AuthPayload): Promise<AuthStorage> {
+    const usesReportsProxy = isProxiedBotUrl(auth.url);
     const { data } = await axios.post<Record<string, never>, AxiosResponse<AuthResponse>>(
-      `${auth.url}/api/v1/token/login`,
+      apiEndpointUrl(auth.url, 'token/login'),
       {},
       {
-        auth: { ...auth },
+        ...(usesReportsProxy
+          ? {
+              headers: {
+                [BOT_AUTHORIZATION_HEADER]: encodeBasicAuthorization(auth.username, auth.password),
+              },
+            }
+          : { auth: { username: auth.username, password: auth.password } }),
         withCredentials: true,
       },
     );
@@ -191,10 +221,12 @@ export function useLoginInfo(botId: string) {
     return new Promise((resolve, reject) => {
       axios
         .post<Record<string, never>, AxiosResponse<AuthResponse>>(
-          `${currentInfo.value.apiUrl}${APIBASE}/token/refresh`,
+          apiEndpointUrl(currentInfo.value.apiUrl, 'token/refresh'),
           {},
           {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: {
+              [getBotAuthorizationHeaderName(currentInfo.value.apiUrl)]: `Bearer ${token}`,
+            },
           },
         )
         .then((response) => {
@@ -205,7 +237,13 @@ export function useLoginInfo(botId: string) {
         })
         .catch((err) => {
           console.error(err);
-          if (err.response && err.response.status === 401) {
+          if (err.response && isReportsAuthChallenge(err.response.headers)) {
+            // Caddy's reports gate refused the refresh, so the bot never saw
+            // it. Keeping the refresh token means restoring reports auth is
+            // enough to carry on - clearing it would force a full re-login.
+            console.log('Reports authentication required - refresh was not proxied.');
+            requireReportsAuth();
+          } else if (err.response && err.response.status === 401) {
             console.log('Refresh token did not refresh.');
             setRefreshTokenExpired();
           } else if (err.response && (err.response.status === 500 || err.response.status === 404)) {

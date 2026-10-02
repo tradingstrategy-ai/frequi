@@ -15,17 +15,26 @@ const hasContent = computed(() => {
   return Boolean(props.payload);
 });
 
-const formatted = computed(() => JSON.stringify(props.payload, null, 2));
+function withUnknownDirection(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withUnknownDirection);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+      key,
+      key === 'direction' && child === null ? 'Unknown' : withUnknownDirection(child),
+    ]));
+  }
+  return value;
+}
+
+const formatted = computed(() => JSON.stringify(withUnknownDirection(props.payload), null, 2));
 </script>
 
 <template>
-  <Card>
-    <template #title>{{ title }}</template>
-    <template #content>
-      <pre v-if="hasContent" class="text-xs text-start overflow-auto max-h-[300px]">{{
-        formatted
-      }}</pre>
-      <EmptyComparisonState v-else :title="title" :detail="emptyText" />
-    </template>
-  </Card>
+  <UCard>
+    <div class="text-lg font-semibold mb-2">{{ title }}</div>
+    <pre v-if="hasContent" class="text-xs text-start overflow-auto max-h-[300px]">{{
+      formatted
+    }}</pre>
+    <EmptyComparisonState v-else :title="title" :detail="emptyText" />
+  </UCard>
 </template>

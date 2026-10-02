@@ -5,6 +5,8 @@ interface ImportMetaEnv extends Readonly<Record<string, string>> {
   readonly PROD: boolean;
   readonly DEV: boolean;
   readonly VITE_COMPARISON_API_BASE?: string;
+  readonly VITE_FT_HOST?: string;
+  readonly VITE_NT_HOST?: string;
   readonly VITE_ICHIV2_LS_HL_URL?: string;
   readonly VITE_ICHIV3_LS_HL_URL?: string;
   readonly VITE_NT_ICHIV3_SOLO_URL?: string;

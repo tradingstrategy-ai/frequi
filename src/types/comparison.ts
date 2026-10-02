@@ -1,17 +1,31 @@
+export interface DashboardReportMetadata {
+  schema_version: string;
+  snapshot_id: string;
+  status: string;
+  reason: string | null;
+  generated_at: string | null;
+  report_date: string | null;
+  report_window: { start: string; end: string } | null;
+  stale: boolean;
+  source_artifacts: string[];
+  unavailable_fields: string[];
+  annotations: { code: string; note: string }[];
+}
+
 export interface MetricsResult {
-  total_trades: number;
-  win_rate_pct: number;
-  profit_factor: number;
-  max_drawdown_pct: number;
+  total_trades: number | null;
+  win_rate_pct: number | null;
+  profit_factor: number | null;
+  max_drawdown_pct: number | null;
   sharpe_ratio: number | null;
-  avg_duration_hours: number;
-  total_profit_pct: number;
-  expectancy: number;
+  avg_duration_hours: number | null;
+  total_profit_pct: number | null;
+  expectancy: number | null;
 }
 
 export interface EquityPoint {
   date: string;
-  value: number;
+  value: number | null;
 }
 
 export interface EquityCurveData {
@@ -21,12 +35,12 @@ export interface EquityCurveData {
 
 export interface TradeInfo {
   pair: string;
-  direction: 'LONG' | 'SHORT';
+  direction: 'LONG' | 'SHORT' | null;
   open_date: string;
   close_date: string;
-  open_rate: number;
-  close_rate: number;
-  profit_ratio: number;
+  open_rate: number | null;
+  close_rate: number | null;
+  profit_ratio: number | null;
   exit_reason?: string;
   bot_id?: string;
 }
@@ -34,33 +48,33 @@ export interface TradeInfo {
 export interface MatchedTrade {
   live_trade: TradeInfo;
   bt_trade: TradeInfo;
-  entry_delay_minutes: number;
-  exit_delay_minutes: number;
-  entry_slippage_pct: number;
-  exit_slippage_pct: number;
-  profit_diff_pct: number;
+  entry_delay_minutes: number | null;
+  exit_delay_minutes: number | null;
+  entry_slippage_pct: number | null;
+  exit_slippage_pct: number | null;
+  profit_diff_pct: number | null;
 }
 
 export interface MatchSummary {
-  matched: number;
-  live_only: number;
-  bt_only: number;
-  match_rate_pct: number;
+  matched: number | null;
+  live_only: number | null;
+  bt_only: number | null;
+  match_rate_pct: number | null;
 }
 
 export interface DailyProfitBar {
   date: string;
-  live_profit: number;
-  bt_profit: number;
-  live_count: number;
-  bt_count: number;
+  live_profit: number | null;
+  bt_profit: number | null;
+  live_count: number | null;
+  bt_count: number | null;
 }
 
 export interface MonthlyHeatmapRow {
   year: number;
   month: number;
-  live_return: number;
-  bt_return: number;
+  live_return: number | null;
+  bt_return: number | null;
 }
 
 export interface OverviewResponse {
@@ -70,6 +84,7 @@ export interface OverviewResponse {
   match_summary: MatchSummary;
   daily_profit: DailyProfitBar[];
   monthly_heatmap: MonthlyHeatmapRow[];
+  report: DashboardReportMetadata;
 }
 
 export interface TimelineResponse {
@@ -78,21 +93,22 @@ export interface TimelineResponse {
   delays: Record<string, unknown>;
   unmatched: Record<string, unknown>;
   match_summary: Partial<MatchSummary>;
+  report: DashboardReportMetadata;
 }
 
 export interface PairHeatmapRow {
   pair: string;
-  bt_profit: number;
-  live_profit: number;
-  diff: number;
+  bt_profit: number | null;
+  live_profit: number | null;
+  diff: number | null;
 }
 
 export interface ExitReasonRow {
   reason: string;
-  bt_count: number;
-  live_count: number;
-  bt_profit: number;
-  live_profit: number;
+  bt_count: number | null;
+  live_count: number | null;
+  bt_profit: number | null;
+  live_profit: number | null;
 }
 
 export interface PairsResponse {
@@ -101,13 +117,14 @@ export interface PairsResponse {
   exit_reasons: ExitReasonRow[];
   categories: Record<string, unknown>[];
   profit_distribution: Record<string, unknown>;
+  report: DashboardReportMetadata;
 }
 
 export interface SlippageRow {
   pair: string;
-  avg_entry_slippage_pct: number;
-  avg_exit_slippage_pct: number;
-  trade_count: number;
+  avg_entry_slippage_pct: number | null;
+  avg_exit_slippage_pct: number | null;
+  trade_count: number | null;
 }
 
 export interface TradesResponse {
@@ -116,37 +133,35 @@ export interface TradesResponse {
   duration_boxplot: Record<string, unknown>;
   by_direction: Record<string, unknown>;
   scatter: Record<string, unknown>[];
+  report: DashboardReportMetadata;
 }
 
 export interface BtMarker {
   pair: string;
   date: string;
-  price: number;
+  price: number | null;
   type: 'entry' | 'exit';
-  direction: 'LONG' | 'SHORT';
+  direction: 'LONG' | 'SHORT' | null;
   is_matched: boolean;
 }
 
 export interface CandlesResponse {
   bt_markers: BtMarker[];
   live_markers: BtMarker[];
+  report: DashboardReportMetadata;
 }
 
 export interface ComparisonBotInfo {
   bot_id: string;
   bot_type: 'FT' | 'NT';
   display_name: string;
+  venue: string | null;
+  sleeves: string[];
   is_vault: boolean;
-  last_sync?: string;
+  last_sync?: string | null;
+  report: DashboardReportMetadata;
 }
 
 export interface ComparisonBotsResponse {
   bots: ComparisonBotInfo[];
-}
-
-export interface ComparisonBacktestStatus {
-  status: 'idle' | 'queued' | 'running' | 'completed' | 'error';
-  bot_id?: string;
-  cache_key?: string;
-  error?: string;
 }

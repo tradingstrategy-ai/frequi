@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { useComparison } from '@/composables/useComparison';
 
-const { comparisonStore, activeBotId, activeTimerange } = useComparison();
+const { comparisonStore, activeBotId, activeTimerange, activeSleeve } = useComparison();
 
 async function loadTimeline() {
+  await comparisonStore.ensureComparisonBots();
   if (!activeBotId.value || !comparisonStore.isActiveBotSupported) return;
+  comparisonStore.setSelectedSleeve(activeSleeve.value);
   comparisonStore.setTimerange(activeTimerange.value);
   await comparisonStore.loadTimeline(activeBotId.value, activeTimerange.value);
 }
@@ -15,17 +17,22 @@ onMounted(async () => {
 });
 
 watch(
-  () => [activeBotId.value, activeTimerange.value, comparisonStore.isActiveBotSupported],
+  () => [activeBotId.value, activeTimerange.value, activeSleeve.value, comparisonStore.isActiveBotSupported, comparisonStore.report?.snapshot_id],
   async () => loadTimeline(),
 );
 </script>
 
 <template>
   <div class="flex flex-col gap-4">
-    <ProgressSpinner v-if="comparisonStore.loading.timeline" class="w-8 h-8 self-center" />
-    <Message v-else-if="comparisonStore.errors.timeline" severity="warn" class="text-start">
-      {{ comparisonStore.errors.timeline }}
-    </Message>
+    <div v-if="comparisonStore.loading.timeline" class="flex flex-col gap-2 self-center">
+      <UIcon name="mdi:loading" class="w-8 h-8 animate-spin" />
+    </div>
+    <UAlert
+      v-else-if="comparisonStore.errors.timeline"
+      color="warning"
+      class="text-start"
+      :title="comparisonStore.errors.timeline"
+    />
     <template v-else-if="comparisonStore.timelineData">
       <EmptyComparisonState
         v-if="
@@ -56,5 +63,7 @@ watch(
         empty-text="No unmatched trade payload was returned."
       />
     </template>
+    <EmptyComparisonState v-else title="No report timeline data"
+      detail="Choose a report from the comparison catalog to view its timeline." />
   </div>
 </template>
