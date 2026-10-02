@@ -24,6 +24,16 @@ const AUTH_SELECTED_BOT = 'ftSelectedBot';
 const APIBASE = '/api/v1';
 const PRELOAD_DEMO_BOTS = import.meta.env.DEV && import.meta.env.VITE_PRELOAD_DEMO_BOTS !== 'false';
 
+function apiBaseUrl(url: string | null | undefined): string {
+  const baseURL = (url ?? '').trim().replace(/\/+$/, '');
+  if (!baseURL) return APIBASE;
+  return baseURL.endsWith(APIBASE) ? baseURL : `${baseURL}${APIBASE}`;
+}
+
+function apiEndpointUrl(url: string, endpoint: string): string {
+  return `${apiBaseUrl(url)}/${endpoint.replace(/^\/+/, '')}`;
+}
+
 // Global state for all login infos
 const allLoginInfos = useStorage<AuthStorageMulti>(AUTH_LOGIN_INFO, {});
 
@@ -115,14 +125,7 @@ export function useLoginInfo(botId: string) {
   const accessToken = computed(() => currentInfo.value.accessToken);
 
   const baseUrl = computed<string>(() => {
-    const baseURL = currentInfo.value.apiUrl;
-    if (baseURL === null) {
-      return APIBASE;
-    }
-    if (!baseURL.endsWith(APIBASE)) {
-      return `${baseURL}${APIBASE}`;
-    }
-    return `${baseURL}${APIBASE}`;
+    return apiBaseUrl(currentInfo.value.apiUrl);
   });
 
   const baseWsUrl = computed<string>(() => {
@@ -180,7 +183,7 @@ export function useLoginInfo(botId: string) {
   async function loginCall(auth: AuthPayload): Promise<AuthStorage> {
     const usesReportsProxy = isProxiedBotUrl(auth.url);
     const { data } = await axios.post<Record<string, never>, AxiosResponse<AuthResponse>>(
-      `${auth.url}/api/v1/token/login`,
+      apiEndpointUrl(auth.url, 'token/login'),
       {},
       {
         ...(usesReportsProxy
@@ -218,7 +221,7 @@ export function useLoginInfo(botId: string) {
     return new Promise((resolve, reject) => {
       axios
         .post<Record<string, never>, AxiosResponse<AuthResponse>>(
-          `${currentInfo.value.apiUrl}${APIBASE}/token/refresh`,
+          apiEndpointUrl(currentInfo.value.apiUrl, 'token/refresh'),
           {},
           {
             headers: {

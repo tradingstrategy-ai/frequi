@@ -106,9 +106,7 @@ async function handleSubmit() {
   if (!checkFormValidity()) {
     return;
   }
-  if (proxiedRoute.value !== undefined) {
-    auth.value.url = proxiedRoute.value;
-  }
+  auth.value.url = proxiedRoute.value ?? auth.value.url.trim().replace(/\/+$/, '');
   errorMessage.value = '';
   errorMessageCORS.value = false;
   reportsAuthRequired.value = false;
