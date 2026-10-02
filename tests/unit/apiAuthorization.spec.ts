@@ -16,7 +16,7 @@ const PROXY_BOT = {
 
 const DIRECT_BOT = {
   botName: 'Local bot',
-  apiUrl: 'http://100.90.145.1:8101',
+  apiUrl: 'http://192.0.2.30:8101',
   username: 'bot-user',
   refreshToken: 'refresh-token',
   accessToken: 'access-token',

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const axiosMock = vi.hoisted(() => ({ post: vi.fn() }));
 vi.mock('axios', () => ({ default: { post: axiosMock.post } }));
@@ -7,6 +7,12 @@ describe('loginInfo demo preload', () => {
   beforeEach(() => {
     vi.resetModules();
     localStorage.clear();
+    vi.stubEnv('VITE_FT_HOST', 'http://192.0.2.20');
+    vi.stubEnv('VITE_NT_HOST', 'http://192.0.2.30');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('seeds every preset bot and selects ichiv3-ls-hyperliquid-live by default', async () => {
@@ -33,12 +39,12 @@ describe('loginInfo demo preload', () => {
     // Each seeded bot ends up in the loggedInBots map with its preset URL.
     expect(loggedInBots.value['nt-opencz-vault']).toMatchObject({
       botName: 'NT OpenCZ Vault',
-      botUrl: 'http://100.90.145.1:8101',
+      botUrl: 'http://192.0.2.30:8101',
       sortId: 30,
     });
     expect(loggedInBots.value['ichiv2-ls-hyperliquid-live']).toMatchObject({
       botName: 'IchiV2 HL Live',
-      botUrl: 'http://100.109.171.15:9100',
+      botUrl: 'http://192.0.2.20:9100',
       sortId: 10,
     });
   });
@@ -134,13 +140,13 @@ describe('loginInfo demo preload', () => {
 
     await useLoginInfo('local').login({
       botName: 'Local bot',
-      url: 'http://100.90.145.1:8101',
+      url: 'http://192.0.2.30:8101',
       username: 'bot-user',
       password: 'bot-pass',
     });
 
     expect(axiosMock.post).toHaveBeenCalledWith(
-      'http://100.90.145.1:8101/api/v1/token/login',
+      'http://192.0.2.30:8101/api/v1/token/login',
       {},
       {
         auth: { username: 'bot-user', password: 'bot-pass' },
@@ -155,7 +161,7 @@ describe('loginInfo demo preload', () => {
       JSON.stringify({
         local: {
           botName: 'Local bot',
-          apiUrl: 'http://100.90.145.1:8101',
+          apiUrl: 'http://192.0.2.30:8101',
           username: 'bot-user',
           refreshToken: 'local-refresh-token',
           accessToken: 'old-token',
@@ -169,7 +175,7 @@ describe('loginInfo demo preload', () => {
     await expect(useLoginInfo('local').refreshToken()).resolves.toBe('new-token');
 
     expect(axiosMock.post).toHaveBeenCalledWith(
-      'http://100.90.145.1:8101/api/v1/token/refresh',
+      'http://192.0.2.30:8101/api/v1/token/refresh',
       {},
       { headers: { Authorization: 'Bearer local-refresh-token' } },
     );

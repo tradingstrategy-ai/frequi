@@ -13,7 +13,7 @@ describe('bot proxy authorization', () => {
   });
 
   it('keeps the standard header for direct bot URLs', () => {
-    expect(getBotAuthorizationHeaderName('http://100.90.145.1:8101')).toBe('Authorization');
+    expect(getBotAuthorizationHeaderName('http://192.0.2.30:8101')).toBe('Authorization');
     expect(getBotAuthorizationHeaderName('/api/v1')).toBe('Authorization');
   });
 

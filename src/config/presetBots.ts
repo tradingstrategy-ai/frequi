@@ -13,13 +13,13 @@ export function getComparisonApiBase(): string {
   return '/api/comparison';
 }
 
-// Tailscale defaults for the live deployment. Override per-bot via VITE_* env vars in
-// .env.local (e.g. for SSH tunnels or staging). Bot IDs MUST match the comparison-backend
-// bot_registry rows seeded by scripts/seed_bot_registry.py.
-const FT_HOST = 'http://100.109.171.15';   // freqtrade-server
-const NT_HOST = 'http://100.90.145.1';     // nautilius
-
+// Deployment hosts come from the build environment so no address is committed. Set
+// VITE_FT_HOST / VITE_NT_HOST (or override per-bot via VITE_* env vars) in .env.local.
+// Bot IDs MUST match the comparison-backend bot_registry rows seeded by
+// scripts/seed_bot_registry.py.
 export function getPresetBots(): PresetBotDefinition[] {
+  const FT_HOST = withDefault(import.meta.env.VITE_FT_HOST, 'http://localhost');
+  const NT_HOST = withDefault(import.meta.env.VITE_NT_HOST, 'http://localhost');
   return [
     // --- FT live (dynamic universe) ---
     {
@@ -110,7 +110,8 @@ export function getPresetBots(): PresetBotDefinition[] {
       botUrl: withDefault(import.meta.env.VITE_NT_OPENCZ_URL, `${NT_HOST}:8101`),
       sortId: 30,
       botType: 'NT',
-      description: 'Nautilus OpenCZ vault — PavelBreakout, PavelTrend, PavelMeanRev, MeanReversionShort, SigComboDvol.',
+      description:
+        'Nautilus OpenCZ vault — PavelBreakout, PavelTrend, PavelMeanRev, MeanReversionShort, SigComboDvol.',
     },
     {
       botId: 'nt-contrarian-funding',

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   getComparisonApiBase,
@@ -8,6 +8,15 @@ import {
 } from '@/config/presetBots';
 
 describe('presetBots', () => {
+  beforeEach(() => {
+    vi.stubEnv('VITE_FT_HOST', 'http://192.0.2.20');
+    vi.stubEnv('VITE_NT_HOST', 'http://192.0.2.30');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('returns the expected stable preset bot ids and default URLs', () => {
     const presetBots = getPresetBots();
 
@@ -37,30 +46,28 @@ describe('presetBots', () => {
     ]);
     expect(getComparisonApiBase()).toBe('/api/comparison');
 
-    // FT bots default to the freqtrade-server tailnet IP.
-    expect(getPresetBotById('ichiv2-ls-hyperliquid-live')?.botUrl).toBe(
-      'http://100.109.171.15:9100',
-    );
-    expect(getPresetBotById('ichiv3-ls-gate-static')?.botUrl).toBe('http://100.109.171.15:9116');
+    // FT bots default to VITE_FT_HOST.
+    expect(getPresetBotById('ichiv2-ls-hyperliquid-live')?.botUrl).toBe('http://192.0.2.20:9100');
+    expect(getPresetBotById('ichiv3-ls-gate-static')?.botUrl).toBe('http://192.0.2.20:9116');
 
-    // NT vaults default to the nautilius tailnet IP.
-    expect(getPresetBotById('nt-opencz-vault')?.botUrl).toBe('http://100.90.145.1:8101');
-    expect(getPresetBotById('nt-weekend-wick')?.botUrl).toBe('http://100.90.145.1:8131');
+    // NT vaults default to VITE_NT_HOST.
+    expect(getPresetBotById('nt-opencz-vault')?.botUrl).toBe('http://192.0.2.30:8101');
+    expect(getPresetBotById('nt-weekend-wick')?.botUrl).toBe('http://192.0.2.30:8131');
     expect(Object.fromEntries(presetBots.map(({ botId, botUrl }) => [botId, botUrl]))).toEqual({
-      'ichiv2-ls-hyperliquid-live': 'http://100.109.171.15:9100',
-      'ichiv3-ls-hyperliquid-live': 'http://100.109.171.15:9103',
-      'ichiv3-ls-hyperliquid-vault-live': 'http://100.109.171.15:9106',
-      'ichiv2-ls-aster-live': 'http://100.109.171.15:9101',
-      'ichiv3-ls-aster-live': 'http://100.109.171.15:9104',
-      'ichiv2-ls-hyperliquid-static': 'http://100.109.171.15:9110',
-      'ichiv3-ls-hyperliquid-static': 'http://100.109.171.15:9113',
-      'ichiv2-ls-aster-static': 'http://100.109.171.15:9111',
-      'ichiv3-ls-aster-static': 'http://100.109.171.15:9114',
-      'ichiv3-ls-gate-static': 'http://100.109.171.15:9116',
-      'nt-opencz-vault': 'http://100.90.145.1:8101',
-      'nt-contrarian-funding': 'http://100.90.145.1:8111',
-      'nt-rwa-vault': 'http://100.90.145.1:8121',
-      'nt-weekend-wick': 'http://100.90.145.1:8131',
+      'ichiv2-ls-hyperliquid-live': 'http://192.0.2.20:9100',
+      'ichiv3-ls-hyperliquid-live': 'http://192.0.2.20:9103',
+      'ichiv3-ls-hyperliquid-vault-live': 'http://192.0.2.20:9106',
+      'ichiv2-ls-aster-live': 'http://192.0.2.20:9101',
+      'ichiv3-ls-aster-live': 'http://192.0.2.20:9104',
+      'ichiv2-ls-hyperliquid-static': 'http://192.0.2.20:9110',
+      'ichiv3-ls-hyperliquid-static': 'http://192.0.2.20:9113',
+      'ichiv2-ls-aster-static': 'http://192.0.2.20:9111',
+      'ichiv3-ls-aster-static': 'http://192.0.2.20:9114',
+      'ichiv3-ls-gate-static': 'http://192.0.2.20:9116',
+      'nt-opencz-vault': 'http://192.0.2.30:8101',
+      'nt-contrarian-funding': 'http://192.0.2.30:8111',
+      'nt-rwa-vault': 'http://192.0.2.30:8121',
+      'nt-weekend-wick': 'http://192.0.2.30:8131',
       orchestrator_gmx_ai_gmx_vault: '/api/bots/gmx',
       orchestrator_apex_vault: '/api/bots/apex',
       dipbuyer_apex_standalone: '/api/bots/dipbuyer',
