@@ -15,8 +15,6 @@ COPY . /app
 
 # Deployment hosts and routes are baked in at build time and are never committed.
 # Pass them with --build-arg; unset values leave the matching feature off.
-ARG VITE_FT_HOST
-ARG VITE_NT_HOST
 ARG VITE_KNOWN_BOT_HOSTNAMES
 ARG VITE_KNOWN_BOT_PORTS
 

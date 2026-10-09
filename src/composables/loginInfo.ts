@@ -69,17 +69,13 @@ export function seedDemoPresetBots(force = false): string[] {
   // in the bot list (preset or custom). Previously this clause also nuked
   // any NT selection on every page load, which was a leftover from when NT
   // bots were placeholder-only — it broke real-NT-vault navigation
-  // (selecting an NT bot then clicking a different tab reset to ichiv3 HL).
+  // (selecting an NT bot then clicking a different tab reset to the default bot).
   const currentSelected = localStorage.getItem(AUTH_SELECTED_BOT);
   const currentReachable = currentSelected ? Boolean(nextLoginInfos[currentSelected]) : false;
   if (!currentSelected || !currentReachable) {
-    const preferred = nextLoginInfos['ichiv3-ls-hyperliquid-live']
-      ? 'ichiv3-ls-hyperliquid-live'
-      : nextLoginInfos['ichiv2-ls-hyperliquid-live']
-        ? 'ichiv2-ls-hyperliquid-live'
-        : nextLoginInfos['nt-opencz-vault']
-          ? 'nt-opencz-vault'
-          : seeded[0];
+    const preferred = nextLoginInfos['orchestrator_gmx_ai_gmx_vault']
+      ? 'orchestrator_gmx_ai_gmx_vault'
+      : seeded[0];
     if (preferred) {
       localStorage.setItem(AUTH_SELECTED_BOT, preferred);
     }
