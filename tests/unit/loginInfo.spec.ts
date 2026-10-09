@@ -7,71 +7,62 @@ describe('loginInfo demo preload', () => {
   beforeEach(() => {
     vi.resetModules();
     localStorage.clear();
-    vi.stubEnv('VITE_FT_HOST', 'http://192.0.2.20');
-    vi.stubEnv('VITE_NT_HOST', 'http://192.0.2.30');
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it('seeds every preset bot and selects ichiv3-ls-hyperliquid-live by default', async () => {
+  it('seeds every preset bot and selects the GMX AI Vault by default', async () => {
     const { seedDemoPresetBots, loggedInBots } = await import('@/composables/loginInfo');
 
     const seeded = seedDemoPresetBots(true);
 
     // Every preset bot should get seeded into local login storage.
-    expect(seeded).toContain('ichiv2-ls-hyperliquid-live');
-    expect(seeded).toContain('ichiv3-ls-hyperliquid-live');
-    expect(seeded).toContain('ichiv3-ls-hyperliquid-vault-live');
-    expect(seeded).toContain('ichiv3-ls-gate-static');
-    expect(seeded).toContain('nt-opencz-vault');
-    expect(seeded).toContain('nt-weekend-wick');
-    expect(seeded).toContain('orchestrator_gmx_ai_gmx_vault');
-    expect(seeded).toContain('orchestrator_apex_vault');
-    expect(seeded).toContain('dipbuyer_apex_standalone');
-    expect(seeded).toContain('derive-2sleeve-mainnet');
-    expect(seeded.length).toBe(18); // 13 FT + 5 NT
+    expect(seeded).toEqual([
+      'orchestrator_gmx_ai_gmx_vault',
+      'orchestrator_apex_vault',
+      'dipbuyer_apex_standalone',
+      'funding_tail_reversal_gmx_standalone',
+      'derive-2sleeve-mainnet',
+    ]);
 
-    // The preferred starting bot is ichiv3 HL Live (top of fallback chain).
-    expect(localStorage.getItem('ftSelectedBot')).toBe('ichiv3-ls-hyperliquid-live');
+    // The preferred starting bot is the GMX AI Vault (top of the fallback chain).
+    expect(localStorage.getItem('ftSelectedBot')).toBe('orchestrator_gmx_ai_gmx_vault');
 
     // Each seeded bot ends up in the loggedInBots map with its preset URL.
-    expect(loggedInBots.value['nt-opencz-vault']).toMatchObject({
-      botName: 'NT OpenCZ Vault',
-      botUrl: 'http://192.0.2.30:8101',
-      sortId: 30,
+    expect(loggedInBots.value['funding_tail_reversal_gmx_standalone']).toMatchObject({
+      botName: 'Funding Tail Reversal GMX',
+      botUrl: '/api/bots/ftr',
+      sortId: 43,
     });
-    expect(loggedInBots.value['ichiv2-ls-hyperliquid-live']).toMatchObject({
-      botName: 'IchiV2 HL Live',
-      botUrl: 'http://192.0.2.20:9100',
-      sortId: 10,
+    expect(loggedInBots.value['derive-2sleeve-mainnet']).toMatchObject({
+      botName: 'Derive 2 Sleeve',
+      botUrl: '/api/bots/derive',
+      sortId: 44,
     });
   });
 
   it('preserves a user-selected NT bot across page reloads', async () => {
     // Regression guard: previously seedDemoPresetBots forcibly reset the
-    // selection to ichiv3 HL Live on every page load when the current
+    // selection to the default bot on every page load when the current
     // selection was an NT bot. That broke real NT vault navigation.
-    localStorage.setItem('ftSelectedBot', 'nt-opencz-vault');
+    localStorage.setItem('ftSelectedBot', 'derive-2sleeve-mainnet');
 
     const { seedDemoPresetBots } = await import('@/composables/loginInfo');
     seedDemoPresetBots(true);
 
-    expect(localStorage.getItem('ftSelectedBot')).toBe('nt-opencz-vault');
+    expect(localStorage.getItem('ftSelectedBot')).toBe('derive-2sleeve-mainnet');
   });
 
-  it('preserves a custom (non-preset) bot across page reloads', async () => {
-    // A bot the user added themselves should also survive — only an
-    // unreachable selection (not in nextLoginInfos) triggers fallback.
+  it('falls back to the default bot when the selection is unreachable', async () => {
+    // A selection that is in no login list triggers the fallback.
     localStorage.setItem('ftSelectedBot', 'my-custom-bot');
 
     const { seedDemoPresetBots } = await import('@/composables/loginInfo');
     seedDemoPresetBots(true);
 
-    // my-custom-bot isn't in any of the seeded presets, so the fallback
-    // kicks in (this matches the unreachable-selection branch).
-    expect(localStorage.getItem('ftSelectedBot')).toBe('ichiv3-ls-hyperliquid-live');
+    expect(localStorage.getItem('ftSelectedBot')).toBe('orchestrator_gmx_ai_gmx_vault');
   });
 
   it('sends proxy bot login credentials through X-Bot-Authorization', async () => {
