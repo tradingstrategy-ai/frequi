@@ -4,6 +4,22 @@ Status: **POC running on staging, 2026-10-14**: http://100.72.126.50:9298/ (tail
 `/srv/lvb-dashboard-staging/secrets/dashboard-login.txt` on vitalik8). Operator runbook:
 orchestrator `docs/runbooks/unified-dashboard-gateway.md`.
 
+## Progress (2026-10-15): full report parity in Compare
+
+- Every section of each bot's daily live-vs-backtest report is shown natively in
+  Compare: Overview, Execution (slippage / price impact / fill-vs-reference, MFE-MAE,
+  lifecycle timing, cost decomposition, timing drift), Timeline (divergence, trade
+  gantt), Pairs & Overlays (pair breakdown, candle overlays), Universe & Signals
+  (universe, ranker admission as a native panel, signal / indicator parity, verdicts),
+  Trade Detail (trade cards). The Report tab keeps the original HTML.
+- Charts: the report's own Plotly figures (exact parity; ECharts could not reproduce
+  the multi-panel and gantt figures, see `public/chart-preview.html` locally). FreqUI's
+  existing charts stay on ECharts.
+- Per-strategy report selector; GMX / Apex stay withheld (NOT_VALIDATED) everywhere.
+- Chart page: "Show BT vs live fills" draws the report's BT triangles and live diamonds.
+- Verified on vitalik8 with headless Playwright (`e2e-live/explore-sections.mjs`,
+  `e2e-live/chart-markers.mjs`), not on a laptop.
+
 ## Progress (2026-10-14)
 
 | Phase | State | Evidence |
