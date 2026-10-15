@@ -9,6 +9,7 @@ vi.mock('axios', () => ({ default: { create: axiosMock.create } }));
 import {
   fetchComparisonBots,
   fetchComparisonCandles,
+  fetchFunding,
   fetchOverview,
   fetchPairs,
   fetchTimeline,
@@ -55,6 +56,11 @@ describe('comparisonApi', () => {
         pair: 'BTC/USDT', timeframe: '1h', timerange: '20260901-20260929', sleeve: 'hedged',
       },
     });
+  });
+
+  it('reads funding from its own same-origin resource, not a per-bot report page', async () => {
+    await fetchFunding();
+    expect(axiosMock.get).toHaveBeenCalledWith('/funding');
   });
 
   it('omits empty optional timerange and sleeve parameters', async () => {

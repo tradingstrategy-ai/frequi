@@ -122,6 +122,8 @@ watch(
 
 <template>
   <div class="flex flex-col gap-4">
+    <!-- Outside the overview chain: a bot with no replay (MISSING) still has a funding figure. -->
+    <FundingReceivedCard :bot-id="activeBotId" />
     <div v-if="comparisonStore.loading.overview" class="flex flex-col gap-2 self-center">
       <UIcon name="mdi:loading" class="w-8 h-8 animate-spin" />
     </div>
