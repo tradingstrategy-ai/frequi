@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useComparison } from '@/composables/useComparison';
 import { REPORTS_AUTH_BOOTSTRAP_URL } from '@/utils/botAuthorization';
+import { loadPlotly } from '@/utils/plotlyLoader';
 
 const route = useRoute();
 const router = useRouter();
@@ -94,7 +95,24 @@ function selectSleeve(sleeve: string) {
   updateQuery({ sleeve: sleeve || undefined });
 }
 
+/**
+ * Fetch every Compare tab's code (and plotly.js, which report sections use) right away.
+ * Over plain HTTP/1.1 a browser holds six connections; fetched later, a tab's chunk can
+ * queue behind slow bot polls and a click seems to do nothing.
+ */
+function prefetchTabs() {
+  void Promise.allSettled([
+    import('@/views/comparison/ReportTabView.vue'),
+    import('@/views/comparison/TradeTimeline.vue'),
+    import('@/views/comparison/PairCategoryAnalysis.vue'),
+    import('@/views/comparison/TradeDeepDive.vue'),
+    import('@/views/comparison/FleetReportTab.vue'),
+    loadPlotly(),
+  ]);
+}
+
 onMounted(async () => {
+  prefetchTabs();
   timerangeInput.value = activeTimerange.value;
   comparisonStore.setTimerange(activeTimerange.value);
   await comparisonStore.ensureComparisonBots();

@@ -53,7 +53,7 @@ for (const bot of bots) {
     });
     await page.setViewportSize({ width: 1600, height: Math.min(Math.max(contentHeight, 1000), 30000) });
     await page.waitForTimeout(500);
-    await page.waitForFunction(() => ![...document.querySelectorAll('[data-testid="report-figure"]')].some((f) => ['idle', 'loading'].includes(f.dataset.state) && f.querySelector('.animate-spin')), null, { timeout: 90_000 }).catch(() => {});
+    await page.waitForFunction(() => ![...document.querySelectorAll('[data-testid="report-figure"]')].some((f) => ['idle', 'loading'].includes(f.dataset.state) && f.querySelector('.animate-spin')), null, { timeout: 45_000 }).catch(() => {});
     const stats = await page.evaluate(() => {
       const figs = [...document.querySelectorAll('[data-testid="report-figure"]')];
       const by = {}; figs.forEach((f) => { by[f.dataset.state] = (by[f.dataset.state] ?? 0) + 1; });
