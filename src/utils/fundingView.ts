@@ -3,6 +3,25 @@ import type { FundingAmounts, FundingBotRow, FundingResponse, FundingStatus } fr
 /** Bots with a funding figure; every other bot's page makes no funding request. */
 export const FUNDING_BOT_IDS: readonly string[] = ['funding_tail_reversal_gmx_standalone'];
 
+/**
+ * The bot the funding card may act on.
+ *
+ * On a cold load the comparison store selects a bot (a persisted one, or the first listed) before the
+ * layout applies the `?bot=` the URL asked for, so for a moment the active bot is not the requested one.
+ * Acting on that transient bot would fire a funding request for a bot the user never opened. Hold (an
+ * empty id, which no funding bot has) until the two agree.
+ *
+ * @param requestedBotId the `bot` query parameter, if any
+ * @param activeBotId the store's active bot
+ */
+export function fundingBotForRequest(
+  requestedBotId: string | null | undefined,
+  activeBotId: string,
+): string {
+  if (requestedBotId && requestedBotId !== activeBotId) return '';
+  return activeBotId;
+}
+
 /** Funding API schema this view understands. */
 export const SUPPORTED_FUNDING_SCHEMA = '1';
 

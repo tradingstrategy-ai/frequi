@@ -6,6 +6,7 @@ import {
   formatAsOf,
   formatUsd,
   FUNDING_BOT_IDS,
+  fundingBotForRequest,
   loadFundingView,
   SUPPORTED_FUNDING_SCHEMA,
 } from '@/utils/fundingView';
@@ -184,5 +185,23 @@ describe('fundingView', () => {
 
   it('returns no view when the backend does not list the bot', async () => {
     expect(await loadFundingView(BOT, async () => response([]))).toEqual({ view: null, error: '' });
+  });
+
+  it('holds the card while the active bot is not the one the URL asked for', () => {
+    // Cold load: the store first selects a persisted or first-listed bot, then applies ?bot=.
+    expect(fundingBotForRequest('orchestrator_gmx_ai_gmx_vault', BOT)).toBe('');
+    expect(fundingBotForRequest(BOT, 'orchestrator_gmx_ai_gmx_vault')).toBe('');
+    expect(fundingBotForRequest(BOT, '')).toBe('');
+  });
+
+  it('lets the card act once the active bot matches, or when the URL names no bot', () => {
+    expect(fundingBotForRequest(BOT, BOT)).toBe(BOT);
+    expect(fundingBotForRequest(undefined, BOT)).toBe(BOT);
+    expect(fundingBotForRequest(null, BOT)).toBe(BOT);
+    expect(fundingBotForRequest('', BOT)).toBe(BOT);
+  });
+
+  it('never turns the held id into a funding request', () => {
+    expect(FUNDING_BOT_IDS).not.toContain(fundingBotForRequest('other', BOT));
   });
 });
