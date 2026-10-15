@@ -86,7 +86,7 @@ onMounted(() => {
         >
           Blacklist
         </label>
-        <div class="flex flex-cols items-center gap-1 pe-1">
+        <div v-if="!botStore.activeBot.isReadOnly" class="flex flex-cols items-center gap-1 pe-1">
           <UPopover>
             <UButton color="neutral" icon="mdi:plus-box-outline" size="md" />
             <template #content>

@@ -125,6 +125,11 @@ const navItems = ref([
     icon: 'i-mdi-compare-horizontal',
   },
   {
+    label: 'Reports',
+    to: '/reports',
+    icon: 'i-mdi-file-chart-outline',
+  },
+  {
     label: 'Logs',
     to: '/logs',
     icon: 'i-mdi-format-list-bulleted',

@@ -13,13 +13,15 @@ use([BarChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]
 const props = defineProps<{
   rows: DailyProfitBar[];
 }>();
-const hasData = computed(() => props.rows.some((row) => row.live_profit !== null || row.bt_profit !== null));
+const hasData = computed(() =>
+  props.rows.some((row) => row.live_profit !== null || row.bt_profit !== null),
+);
 
 const chartOptions = computed<EChartsOption>(() => {
   return {
     tooltip: { trigger: 'axis' },
-    legend: { data: ['Live', 'Backtest'] },
-    grid: { left: 32, right: 16, top: 36, bottom: 24 },
+    legend: { data: ['Live', 'Backtest'], top: 0 },
+    grid: { left: 48, right: 16, top: 40, bottom: 28 },
     xAxis: {
       type: 'category',
       data: props.rows.map((row) => row.date),

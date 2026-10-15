@@ -30,3 +30,9 @@ yarn-error.log*
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Live E2E run output (screenshots of real bot data)
+e2e-live/results/
+e2e-live/explore/
+e2e-live/explore-compare/
+e2e-live/explore-clicks/

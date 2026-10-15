@@ -22,8 +22,8 @@ const props = defineProps<{
 
 const displayMode = computed(() => props.mode ?? 'percent');
 
-const hasData = computed(
-  () => [...props.equityCurve.live, ...props.equityCurve.bt].some((point) => point.value !== null),
+const hasData = computed(() =>
+  [...props.equityCurve.live, ...props.equityCurve.bt].some((point) => point.value !== null),
 );
 
 const chartOptions = computed<EChartsOption>(() => {
@@ -39,20 +39,27 @@ const chartOptions = computed<EChartsOption>(() => {
 
   return {
     tooltip: { trigger: 'axis' },
-    legend: { data: ['Live', 'Backtest'] },
-    grid: { left: 32, right: 16, top: 36, bottom: 24 },
+    legend: { data: ['Live', 'Backtest'], top: 0 },
+    grid: { left: 64, right: 16, top: 40, bottom: 28 },
     xAxis: {
       type: 'category',
       data: labels,
       axisLabel: {
         hideOverlap: true,
+        // "2026-10-03T04:00:09.750000+00:00" -> "2026-10-03"
+        formatter: (value: string) => value.slice(0, 10),
       },
     },
     yAxis: {
       type: 'value',
-      name: displayMode.value === 'account_balance'
-        ? 'Account Balance'
-        : displayMode.value === 'share_price' ? 'Share Price' : 'Profit %',
+      // Realized balances move a few percent; an axis forced to 0 flattens the curves.
+      scale: true,
+      name:
+        displayMode.value === 'account_balance'
+          ? 'Account Balance'
+          : displayMode.value === 'share_price'
+            ? 'Share Price'
+            : 'Profit %',
       axisLabel: {
         formatter: (value: number) => {
           if (displayMode.value === 'account_balance') {
@@ -66,14 +73,18 @@ const chartOptions = computed<EChartsOption>(() => {
       {
         name: 'Live',
         type: 'line',
-        smooth: true,
+        // Balance changes at trade close and holds in between; the two series sample
+        // different timestamps, so null points are bridged rather than drawn as dots.
+        step: 'end',
+        connectNulls: true,
         showSymbol: false,
         data: labels.map((label) => liveMap.get(label) ?? null),
       },
       {
         name: 'Backtest',
         type: 'line',
-        smooth: true,
+        step: 'end',
+        connectNulls: true,
         showSymbol: false,
         data: labels.map((label) => btMap.get(label) ?? null),
       },

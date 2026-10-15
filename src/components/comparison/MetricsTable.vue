@@ -23,21 +23,35 @@ const rows = computed(() => {
     avg_duration_hours: 'Avg duration (h)',
     total_profit_pct: 'Total profit',
     expectancy: 'Expectancy',
+    cagr_pct: 'CAGR',
+    sortino_ratio: 'Sortino ratio',
+    calmar_ratio: 'Calmar ratio',
+    avg_profit_pct: 'Avg trade profit',
+    avg_win_pct: 'Avg win',
+    avg_loss_pct: 'Avg loss',
   };
+  // The first eight rows always show; the extras only when the report has them.
+  const always = new Set(Object.keys(labels).slice(0, 8));
+  const present = (key: string) =>
+    always.has(key) ||
+    props.liveMetrics[key as keyof MetricsResult] != null ||
+    props.btMetrics[key as keyof MetricsResult] != null;
 
-  return Object.keys(labels).map((key) => {
-    const liveValue = props.liveMetrics[key as keyof MetricsResult];
-    const btValue = props.btMetrics[key as keyof MetricsResult];
-    const delta =
-      typeof liveValue === 'number' && typeof btValue === 'number' ? liveValue - btValue : null;
-    return {
-      key,
-      label: labels[key]!,
-      live: formatMetric(key, liveValue as number | null | undefined),
-      bt: formatMetric(key, btValue as number | null | undefined),
-      delta: formatMetric(key, delta),
-    };
-  });
+  return Object.keys(labels)
+    .filter(present)
+    .map((key) => {
+      const liveValue = props.liveMetrics[key as keyof MetricsResult];
+      const btValue = props.btMetrics[key as keyof MetricsResult];
+      const delta =
+        typeof liveValue === 'number' && typeof btValue === 'number' ? liveValue - btValue : null;
+      return {
+        key,
+        label: labels[key]!,
+        live: formatMetric(key, liveValue as number | null | undefined),
+        bt: formatMetric(key, btValue as number | null | undefined),
+        delta: formatMetric(key, delta),
+      };
+    });
 });
 
 const columns = [

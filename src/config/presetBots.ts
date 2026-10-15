@@ -1,18 +1,61 @@
 import type { BotDescriptor } from '@/types';
+import { useDashboardRegistry } from '@/composables/dashboardRegistry';
 
 export interface PresetBotDefinition extends BotDescriptor {
   description: string;
   botType: 'FT' | 'NT';
+  /** Gateway slug (registry presets only). */
+  slug?: string;
+  /** Writes are refused by the gateway (all NT bots; FT unless writes are enabled). */
+  readOnly?: boolean;
+  /** Bot publishes fleet live-vs-backtest HTML reports. */
+  hasReports?: boolean;
+  dryRun?: boolean;
 }
 
 export function getComparisonApiBase(): string {
   return '/api/comparison';
 }
 
+/**
+ * Presets from the dashboard gateway's registry, when the dashboard has one.
+ *
+ * The registry (orchestrator `deploy/vitalik8-dashboard/bots.json`) is the single
+ * list of bots; without a gateway this returns an empty list and the static
+ * production presets below apply.
+ */
+function getRegistryPresets(): PresetBotDefinition[] {
+  const { registry, registryBotId } = useDashboardRegistry();
+  return (registry.value?.bots ?? []).map((bot, index) => ({
+    botId: registryBotId(bot),
+    botName: bot.display_name,
+    botUrl: bot.api_route,
+    sortId: 100 + index,
+    botType: bot.engine,
+    slug: bot.slug,
+    readOnly: bot.read_only,
+    hasReports: bot.has_reports,
+    dryRun: bot.dry_run,
+    description: [
+      bot.engine === 'NT' ? 'Nautilus bot (read-only)' : 'Freqtrade bot',
+      bot.dry_run ? 'dry-run' : null,
+      bot.comparison_id ? 'live-vs-backtest comparison' : null,
+      bot.has_reports ? 'fleet report' : null,
+    ]
+      .filter(Boolean)
+      .join(' · '),
+  }));
+}
+
+export function getPresetBots(): PresetBotDefinition[] {
+  const registryPresets = getRegistryPresets();
+  return registryPresets.length > 0 ? registryPresets : getStaticPresetBots();
+}
+
 // Production bots, reached through the dashboard's same-origin `/api/bots/*` proxy so the
 // bots' own CORS policy never applies. Bot IDs MUST match the comparison-backend
 // bot_registry rows seeded by scripts/seed_bot_registry.py.
-export function getPresetBots(): PresetBotDefinition[] {
+export function getStaticPresetBots(): PresetBotDefinition[] {
   return [
     {
       botId: 'orchestrator_gmx_ai_gmx_vault',

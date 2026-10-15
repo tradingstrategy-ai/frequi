@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDashboardRegistry } from '@/composables/dashboardRegistry';
 import type { AuthStorageWithBotId } from '@/types';
 import { getPresetBots } from '@/config/presetBots';
 import type { PresetBotDefinition } from '@/config/presetBots';
@@ -20,7 +21,14 @@ const emit = defineEmits<{
 const botStore = useBotStore();
 const presetBots = computed(() => getPresetBots());
 
+const { registry, connectRegistryBots } = useDashboardRegistry();
+
 function openPreset(presetBot: PresetBotDefinition) {
+  if (presetBot.slug && registry.value) {
+    // Gateway preset: no credentials to type, connect directly.
+    void connectRegistryBots();
+    return;
+  }
   const bot = botStore.botStores[presetBot.botId];
   if (bot) {
     emit('relogin', {
@@ -40,12 +48,17 @@ function openPreset(presetBot: PresetBotDefinition) {
         Preset Bots
       </h3>
       <p class="text-sm text-surface-500">
-        Connect the supported FT and NT bots with stable ids for the comparison pages.
+        {{
+          registry
+            ? 'Every bot in the dashboard registry. Logins are held by the gateway.'
+            : 'Connect the supported FT and NT bots with stable ids for the comparison pages.'
+        }}
       </p>
     </div>
     <div
       class="grid gap-3"
       :class="{ 'grid-cols-1': compact, 'grid-cols-1 lg:grid-cols-2': !compact }"
+      :data-testid="registry ? 'registry-presets' : 'static-presets'"
     >
       <div
         v-for="presetBot in presetBots"
@@ -57,6 +70,8 @@ function openPreset(presetBot: PresetBotDefinition) {
             {{ presetBot.botType }}
           </UBadge>
           <span class="font-semibold">{{ presetBot.botName }}</span>
+          <UBadge v-if="presetBot.readOnly" color="neutral" variant="outline">Read-only</UBadge>
+          <UBadge v-if="presetBot.dryRun" color="warning" variant="outline">Dry-run</UBadge>
           <UBadge v-if="presetBot.botId in botStore.availableBots" color="success">
             Connected
           </UBadge>

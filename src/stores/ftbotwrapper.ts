@@ -19,6 +19,7 @@ import type { ComputedRef, Ref } from 'vue';
 import { TimeSummaryOptions } from '@/types';
 import { createBotSubStore } from './ftbot';
 import { seedDemoPresetBots } from '@/composables/loginInfo';
+import { connectRegistryBots } from '@/composables/dashboardRegistry';
 const AUTH_SELECTED_BOT = 'ftSelectedBot';
 
 // Import axios for type inference only
@@ -361,7 +362,23 @@ export const useBotStore = defineStore('ftbot-wrapper', (): BotStoreSetup => {
     globalAutoRefresh.value = value;
   }
 
+  /**
+   * Bots shown in full: the one on screen and the ones ticked for the multi-bot views.
+   * With a few bots everything is foreground; with dozens (the dashboard gateway) only
+   * these are polled at full rate, because the rest would cost hundreds of requests
+   * every few seconds and freeze the browser.
+   */
+  function isForeground(store: BotSubStore): boolean {
+    return store.isSelected || store.botId === selectedBot.value;
+  }
+
+  /** Background bots poll once per this many 5 s ticks (every 60 s). */
+  const BACKGROUND_EVERY_TICKS = 12;
+  let frequentTick = 0;
+
   async function allRefreshFrequent(forceUpdate = false) {
+    frequentTick += 1;
+    const backgroundTurn = forceUpdate || frequentTick % BACKGROUND_EVERY_TICKS === 0;
     const updates: Promise<unknown>[] = [];
     allBotStores.value.forEach((store) => {
       if (
@@ -369,7 +386,11 @@ export const useBotStore = defineStore('ftbot-wrapper', (): BotStoreSetup => {
         store.botStatusAvailable &&
         (globalAutoRefresh.value || forceUpdate)
       ) {
-        updates.push(store.refreshFrequent());
+        if (isForeground(store)) {
+          updates.push(store.refreshFrequent());
+        } else if (backgroundTurn) {
+          updates.push(store.getOpenTrades());
+        }
       }
     });
     await Promise.all(updates);
@@ -380,7 +401,7 @@ export const useBotStore = defineStore('ftbot-wrapper', (): BotStoreSetup => {
     const updates: Promise<unknown>[] = [];
     allBotStores.value.forEach((store) => {
       if (store.refreshNow && (globalAutoRefresh.value || forceUpdate)) {
-        updates.push(store.refreshSlow(forceUpdate));
+        updates.push(isForeground(store) ? store.refreshSlow(forceUpdate) : store.refreshLight());
       }
     });
     await Promise.all(updates);
@@ -398,12 +419,36 @@ export const useBotStore = defineStore('ftbot-wrapper', (): BotStoreSetup => {
     );
   }
 
+  /**
+   * Load one bot completely: ping, configuration, then its frequent and slow data.
+   */
+  async function refreshBotFull(store: BotSubStore) {
+    try {
+      await store.fetchPing();
+    } catch {
+      return;
+    }
+    if (store.isBotLoggedIn && store.isBotOnline && !store.botStatusAvailable) {
+      await store.getState();
+    }
+    if (store.refreshNow) {
+      await Promise.all([store.refreshFrequent(), store.refreshSlow(true)]);
+    }
+  }
+
   async function allRefreshFull() {
     if (refreshing.value) {
       return;
     }
     refreshing.value = true;
     try {
+      // The bot on screen first. Behind the dashboard gateway one origin serves every
+      // bot over HTTP/1.1 (6 connections per host), so refreshing all bots at once
+      // left the selected bot queued behind ~30 others' requests.
+      const active = botStores.value[selectedBot.value];
+      if (active) {
+        await refreshBotFull(active).catch((error) => console.error(error));
+      }
       await pingAll();
 
       const botStoreUpdates: Promise<BotState>[] = [];
@@ -580,15 +625,33 @@ export const useBotStore = defineStore('ftbot-wrapper', (): BotStoreSetup => {
   };
 });
 
+let botsStarted = false;
+
+/**
+ * Connect the stored bots and start refreshing. Runs on every navigation (router guard),
+ * so only the first call starts the refresh loops; later calls refresh in full only when
+ * a bot was added. Re-running a full refresh of every bot on each click is what froze
+ * the browser once the dashboard gateway connected dozens of bots.
+ */
 export function initBots() {
   const botStore = useBotStore();
   seedDemoPresetBots();
+  const before = botStore.botCount;
   Object.entries(loggedInBots.value).forEach(([, v]) => {
-    botStore.addBot(v);
+    if (!(v.botId in botStore.availableBots)) {
+      botStore.addBot(v);
+    }
   });
   botStore.selectFirstBot();
-  botStore.startRefresh();
-  botStore.allRefreshFull();
+  if (!botsStarted) {
+    botsStarted = true;
+    botStore.startRefresh();
+  } else if (botStore.botCount > before) {
+    botStore.allRefreshFull();
+  }
+  // Behind the dashboard gateway every registry bot is connected automatically: the
+  // gateway holds the bot logins, so there is nothing to type.
+  void connectRegistryBots();
 }
 
 if (import.meta.hot) {

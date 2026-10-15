@@ -47,8 +47,12 @@ function extractErrorMessage(error: unknown, fallback: string): string {
 }
 
 function isUnauthorized(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'response' in error &&
-    (error.response as { status?: number }).status === 401;
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    (error.response as { status?: number }).status === 401
+  );
 }
 
 export const useComparisonStore = defineStore(
@@ -70,10 +74,18 @@ export const useComparisonStore = defineStore(
     const tradesData = ref<TradesResponse | null>(null);
     const candlesData = ref<CandlesResponse | null>(null);
     const loading = reactive<Record<PageKind, boolean>>({
-      overview: false, timeline: false, pairs: false, trades: false, candles: false,
+      overview: false,
+      timeline: false,
+      pairs: false,
+      trades: false,
+      candles: false,
     });
     const errors = reactive<Record<PageKind, string>>({
-      overview: '', timeline: '', pairs: '', trades: '', candles: '',
+      overview: '',
+      timeline: '',
+      pairs: '',
+      trades: '',
+      candles: '',
     });
     const overviewCache = shallowRef<Record<string, OverviewResponse>>({});
     const timelineCache = shallowRef<Record<string, TimelineResponse>>({});
@@ -83,12 +95,20 @@ export const useComparisonStore = defineStore(
     let metadataRequest: Promise<ComparisonBotInfo[]> | null = null;
     let selectionGeneration = 0;
     const pageRequestGeneration: Record<PageKind, number> = {
-      overview: 0, timeline: 0, pairs: 0, trades: 0, candles: 0,
+      overview: 0,
+      timeline: 0,
+      pairs: 0,
+      trades: 0,
+      candles: 0,
     };
     const activePage = ref<PageKind | null>(null);
     const activePageReport = shallowRef<ActivePageReport | null>(null);
 
-    function selectionKey(botId = selectedBotId.value, sleeve = selectedSleeve.value, range = timerange.value): string {
+    function selectionKey(
+      botId = selectedBotId.value,
+      sleeve = selectedSleeve.value,
+      range = timerange.value,
+    ): string {
       return JSON.stringify([botId, sleeve, range]);
     }
 
@@ -101,13 +121,23 @@ export const useComparisonStore = defineStore(
       });
     }
 
-    function requestIsCurrent(page: PageKind, requestId: number, requestGeneration: number): boolean {
-      return pageRequestGeneration[page] === requestId &&
+    function requestIsCurrent(
+      page: PageKind,
+      requestId: number,
+      requestGeneration: number,
+    ): boolean {
+      return (
+        pageRequestGeneration[page] === requestId &&
         selectionGeneration === requestGeneration &&
-        activePage.value === page;
+        activePage.value === page
+      );
     }
 
-    function setActivePageReport(page: PageKind, requestSelection: string, metadata: DashboardReportMetadata) {
+    function setActivePageReport(
+      page: PageKind,
+      requestSelection: string,
+      metadata: DashboardReportMetadata,
+    ) {
       activePageReport.value = { page, selectionKey: requestSelection, report: metadata };
     }
 
@@ -122,10 +152,13 @@ export const useComparisonStore = defineStore(
       const catalogueReport = activeComparisonBot.value?.report ?? null;
       const pageReport = activePageReport.value;
       if (
-        catalogueReport && pageReport && pageReport.page === activePage.value &&
+        catalogueReport &&
+        pageReport &&
+        pageReport.page === activePage.value &&
         pageReport.selectionKey === selectionKey() &&
         pageReport.report.snapshot_id === catalogueReport.snapshot_id
-      ) return pageReport.report;
+      )
+        return pageReport.report;
       return catalogueReport;
     });
 
@@ -212,23 +245,32 @@ export const useComparisonStore = defineStore(
           const previous = supportedBotMap.value;
           const selectionBeforeRefresh = selectionKey();
           const activeBeforeRefresh = previous[selectedBotId.value];
-          const activeAfterRefresh = response.bots.find((bot) => bot.bot_id === selectedBotId.value);
+          const activeAfterRefresh = response.bots.find(
+            (bot) => bot.bot_id === selectedBotId.value,
+          );
           if (
             activeBeforeRefresh &&
-            (!activeAfterRefresh || activeBeforeRefresh.report.snapshot_id !== activeAfterRefresh.report.snapshot_id)
+            (!activeAfterRefresh ||
+              activeBeforeRefresh.report.snapshot_id !== activeAfterRefresh.report.snapshot_id)
           ) {
             clearDisplayedPages();
             activePageReport.value = null;
           }
           for (const bot of response.bots) {
-            if (previous[bot.bot_id] && previous[bot.bot_id]!.report.snapshot_id !== bot.report.snapshot_id) {
+            if (
+              previous[bot.bot_id] &&
+              previous[bot.bot_id]!.report.snapshot_id !== bot.report.snapshot_id
+            ) {
               invalidateBot(bot.bot_id);
             }
           }
           supportedBots.value = response.bots;
           supportedBotsLoaded.value = true;
           if (!isSupportedBot(selectedBotId.value)) {
-            selectedBotId.value = response.bots[0]?.bot_id ?? '';
+            // First bot that actually has numbers: the catalog starts with bots whose
+            // report is INSUFFICIENT_HISTORY / MISSING, which would open on all N/A.
+            const withData = response.bots.find((bot) => bot.report.status === 'SUCCESS');
+            selectedBotId.value = (withData ?? response.bots[0])?.bot_id ?? '';
           }
           if (!activeComparisonBot.value?.sleeves.includes(selectedSleeve.value)) {
             selectedSleeve.value = '';
@@ -237,7 +279,10 @@ export const useComparisonStore = defineStore(
           authRequired.value = false;
           return supportedBots.value;
         } catch (error) {
-          supportedBotsError.value = extractErrorMessage(error, 'Failed to load comparison bot catalog.');
+          supportedBotsError.value = extractErrorMessage(
+            error,
+            'Failed to load comparison bot catalog.',
+          );
           authRequired.value = isUnauthorized(error);
           supportedBotsLoaded.value = false;
           return [];
@@ -286,7 +331,10 @@ export const useComparisonStore = defineStore(
         const currentBot = supportedBotMap.value[botId];
         if (!requestIsCurrent(page, requestId, requestGeneration) || !currentBot) return null;
         const catalogueSnapshot = currentBot.report.snapshot_id;
-        if (catalogueSnapshot !== metadata.report.snapshot_id && data.report.snapshot_id !== catalogueSnapshot) {
+        if (
+          catalogueSnapshot !== metadata.report.snapshot_id &&
+          data.report.snapshot_id !== catalogueSnapshot
+        ) {
           return null;
         }
         updateBotReport(botId, data.report);
@@ -310,19 +358,55 @@ export const useComparisonStore = defineStore(
 
     async function loadOverview(botId = activeBotId.value, range = timerange.value, force = false) {
       if (!botId) return null;
-      return loadPage('overview', botId, range, selectedSleeve.value, fetchOverview, overviewCache, overviewData, force);
+      return loadPage(
+        'overview',
+        botId,
+        range,
+        selectedSleeve.value,
+        fetchOverview,
+        overviewCache,
+        overviewData,
+        force,
+      );
     }
     async function loadTimeline(botId = activeBotId.value, range = timerange.value, force = false) {
       if (!botId) return null;
-      return loadPage('timeline', botId, range, selectedSleeve.value, fetchTimeline, timelineCache, timelineData, force);
+      return loadPage(
+        'timeline',
+        botId,
+        range,
+        selectedSleeve.value,
+        fetchTimeline,
+        timelineCache,
+        timelineData,
+        force,
+      );
     }
     async function loadPairs(botId = activeBotId.value, range = timerange.value, force = false) {
       if (!botId) return null;
-      return loadPage('pairs', botId, range, selectedSleeve.value, fetchPairs, pairsCache, pairsData, force);
+      return loadPage(
+        'pairs',
+        botId,
+        range,
+        selectedSleeve.value,
+        fetchPairs,
+        pairsCache,
+        pairsData,
+        force,
+      );
     }
     async function loadTrades(botId = activeBotId.value, range = timerange.value, force = false) {
       if (!botId) return null;
-      return loadPage('trades', botId, range, selectedSleeve.value, fetchTrades, tradesCache, tradesData, force);
+      return loadPage(
+        'trades',
+        botId,
+        range,
+        selectedSleeve.value,
+        fetchTrades,
+        tradesCache,
+        tradesData,
+        force,
+      );
     }
 
     async function loadCandles(botId: string, pair: string, timeframeValue: string, force = false) {
@@ -349,11 +433,20 @@ export const useComparisonStore = defineStore(
       loading.candles = true;
       errors.candles = '';
       try {
-        const data = await fetchComparisonCandles(botId, pair, timeframeValue, timerange.value || undefined, selectedSleeve.value || undefined);
+        const data = await fetchComparisonCandles(
+          botId,
+          pair,
+          timeframeValue,
+          timerange.value || undefined,
+          selectedSleeve.value || undefined,
+        );
         const currentBot = supportedBotMap.value[botId];
         if (!requestIsCurrent('candles', requestId, requestGeneration) || !currentBot) return null;
         const catalogueSnapshot = currentBot.report.snapshot_id;
-        if (catalogueSnapshot !== metadata.report.snapshot_id && data.report.snapshot_id !== catalogueSnapshot) {
+        if (
+          catalogueSnapshot !== metadata.report.snapshot_id &&
+          data.report.snapshot_id !== catalogueSnapshot
+        ) {
           return null;
         }
         updateBotReport(botId, data.report);
@@ -383,7 +476,10 @@ export const useComparisonStore = defineStore(
 
     if (typeof document !== 'undefined') {
       const refreshMetadataOnVisible = () => {
-        if (document.visibilityState === 'visible' && Date.now() - lastMetadataCheckAt.value >= METADATA_MAX_AGE) {
+        if (
+          document.visibilityState === 'visible' &&
+          Date.now() - lastMetadataCheckAt.value >= METADATA_MAX_AGE
+        ) {
           void ensureComparisonBots(true);
         }
       };
@@ -396,12 +492,37 @@ export const useComparisonStore = defineStore(
     }
 
     return {
-      supportedBots, supportedBotsLoaded, supportedBotsLoading, supportedBotsError, authRequired,
-      selectedBotId, selectedSleeve, timerange, activeBotId, activeComparisonBot,
-      isActiveBotSupported, activeBotType, report, overviewData, timelineData, pairsData,
-      tradesData, candlesData, loading, errors, ensureComparisonBots, isSupportedBot,
-      setSelectedBot, setSelectedSleeve, setTimerange, loadOverview, loadTimeline, loadPairs,
-      loadTrades, loadCandles, getCachedCandles,
+      supportedBots,
+      supportedBotsLoaded,
+      supportedBotsLoading,
+      supportedBotsError,
+      authRequired,
+      selectedBotId,
+      selectedSleeve,
+      timerange,
+      activeBotId,
+      activeComparisonBot,
+      isActiveBotSupported,
+      activeBotType,
+      report,
+      overviewData,
+      timelineData,
+      pairsData,
+      tradesData,
+      candlesData,
+      loading,
+      errors,
+      ensureComparisonBots,
+      isSupportedBot,
+      setSelectedBot,
+      setSelectedSleeve,
+      setTimerange,
+      loadOverview,
+      loadTimeline,
+      loadPairs,
+      loadTrades,
+      loadCandles,
+      getCachedCandles,
     };
   },
   { persist: { key: 'ftUIComparisonSettings', pick: ['selectedBotId', 'selectedSleeve'] } },

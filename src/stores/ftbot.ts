@@ -119,6 +119,10 @@ export function createBotSubStore(botId: string, botName: string) {
         botState.value?.runmode === RunModes.LIVE || botState.value?.runmode === RunModes.DRY_RUN,
     );
     const timeframe = computed(() => botState.value?.timeframe || '');
+    /** Bot is behind the dashboard gateway's read-only guard (all NT bots; FT unless writes are on). */
+    const isReadOnly = computed(
+      () => botState.value?.dashboard_read_only === true || botState.value?.engine === 'NT',
+    );
 
     const openTradeCount = computed(() => openTrades.value.length);
 
@@ -236,6 +240,28 @@ export function createBotSubStore(botId: string, botName: string) {
       await getOpenTrades();
       await getLocks();
     }
+    /**
+     * Enough for the multi-bot comparison list (state, profit, balance) without the
+     * trade history, candles-adjacent data and white/blacklists a full refresh loads.
+     * Used for bots that are neither selected nor on screen.
+     */
+    async function refreshLight() {
+      if (refreshing.value) {
+        return;
+      }
+      try {
+        refreshing.value = true;
+        await Promise.all([getState(), getProfit(), getBalance()]);
+      } finally {
+        refreshing.value = false;
+      }
+    }
+    // A bot that becomes part of the multi-bot views needs its full data right away.
+    watch(isSelected, (selected) => {
+      if (selected && botStatusAvailable.value) {
+        void refreshSlow(true);
+      }
+    });
 
     function setDetailTrade(trade: Trade | null) {
       detailTradeId.value = trade?.trade_id || null;
@@ -1384,6 +1410,7 @@ export function createBotSubStore(botId: string, botName: string) {
     return {
       websocketStarted,
       isSelected,
+      refreshLight,
       ping,
       botStatusAvailable,
       isBotOnline,
@@ -1441,6 +1468,7 @@ export function createBotSubStore(botId: string, botName: string) {
       stakeCurrencyDecimals,
       canRunBacktest,
       isWebserverMode,
+      isReadOnly,
       selectedBacktestResult,
       selectedBacktestMetadata,
       shortAllowed,

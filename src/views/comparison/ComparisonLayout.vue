@@ -1,18 +1,44 @@
 <script setup lang="ts">
 import { useComparison } from '@/composables/useComparison';
+import { REPORTS_AUTH_BOOTSTRAP_URL } from '@/utils/botAuthorization';
 
 const route = useRoute();
 const router = useRouter();
-const { comparisonStore, activeBotId, activeBotName, activeTimerange, activeSleeve } = useComparison();
+const botStore = useBotStore();
+const { comparisonStore, activeBotId, activeBotName, activeTimerange, activeSleeve } =
+  useComparison();
 const timerangeInput = ref('');
 const now = ref(Date.now());
 let ageTimer: number | undefined;
+
+/** Report states that carry no comparison data; shown as a banner with the reason. */
+const NO_DATA_STATUSES: Record<string, { color: 'error' | 'warning' | 'info'; title: string }> = {
+  FAILED: { color: 'error', title: 'The latest report run failed' },
+  MISSING: { color: 'warning', title: 'No report has been produced for this bot yet' },
+  INCOMPLETE: { color: 'warning', title: 'The latest report is incomplete' },
+  INSUFFICIENT_HISTORY: { color: 'info', title: 'Not enough live history to compare yet' },
+  NO_BACKTEST: { color: 'info', title: 'The backtest produced no trades to compare against' },
+  BLIND: { color: 'warning', title: "The report could not see this bot's live data" },
+  NOT_VALIDATED: { color: 'warning', title: 'This report has not been validated' },
+};
+const statusNotice = computed(() => {
+  const status = comparisonStore.report?.status;
+  return status ? NO_DATA_STATUSES[status] : undefined;
+});
+
+/** The navbar bot, when it is a Compare bot that has numbers to show. */
+function navbarBotWithData(): string {
+  const id = botStore.selectedBot;
+  const bot = comparisonStore.supportedBots.find((b) => b.bot_id === id);
+  return bot?.report.status === 'SUCCESS' ? id : '';
+}
 
 const navItems = [
   { label: 'Overview', to: '/compare/overview' },
   { label: 'Timeline', to: '/compare/timeline' },
   { label: 'Pairs', to: '/compare/pairs' },
   { label: 'Deep Dive', to: '/compare/trades' },
+  { label: 'Report', to: '/compare/report' },
 ];
 const reportAge = computed(() => {
   const generatedAt = comparisonStore.report?.generated_at;
@@ -36,7 +62,9 @@ const reportWindowText = computed(() => {
   return window ? `${window.start} to ${window.end}` : '';
 });
 const annotationText = computed(() =>
-  (comparisonStore.report?.annotations ?? []).map(({ code, note }) => `${code}: ${note}`).join(' · '),
+  (comparisonStore.report?.annotations ?? [])
+    .map(({ code, note }) => `${code}: ${note}`)
+    .join(' · '),
 );
 
 function updateQuery(extra: Record<string, string | undefined>) {
@@ -71,51 +99,86 @@ onMounted(async () => {
     comparisonStore.setSelectedBot(requestedBot);
   } else if (requestedBot) {
     updateQuery({ bot: undefined, sleeve: undefined });
+  } else if (navbarBotWithData()) {
+    // Opened from the navbar: show the bot selected there. A bot without numbers is
+    // not followed: the navbar's first-connected bot would otherwise open Compare blank.
+    comparisonStore.setSelectedBot(navbarBotWithData());
+    updateQuery({ bot: navbarBotWithData() });
   }
-  const invalidRequestedBot = Boolean(requestedBot && !comparisonStore.isSupportedBot(requestedBot));
-  const requestedSleeve = !invalidRequestedBot && typeof route.query.sleeve === 'string'
-    ? route.query.sleeve
-    : invalidRequestedBot ? '' : comparisonStore.selectedSleeve;
+  const invalidRequestedBot = Boolean(
+    requestedBot && !comparisonStore.isSupportedBot(requestedBot),
+  );
+  const requestedSleeve =
+    !invalidRequestedBot && typeof route.query.sleeve === 'string'
+      ? route.query.sleeve
+      : invalidRequestedBot
+        ? ''
+        : comparisonStore.selectedSleeve;
   comparisonStore.setSelectedSleeve(requestedSleeve);
   if (requestedSleeve && comparisonStore.selectedSleeve !== requestedSleeve) {
     updateQuery({ sleeve: undefined });
   }
-  ageTimer = window.setInterval(() => { now.value = Date.now(); }, 30_000);
+  ageTimer = window.setInterval(() => {
+    now.value = Date.now();
+  }, 30_000);
 });
 
 onBeforeUnmount(() => {
   if (ageTimer !== undefined) window.clearInterval(ageTimer);
 });
 
-watch(() => activeTimerange.value, (value) => {
-  timerangeInput.value = value;
-  comparisonStore.setTimerange(value);
-});
+watch(
+  () => activeTimerange.value,
+  (value) => {
+    timerangeInput.value = value;
+    comparisonStore.setTimerange(value);
+  },
+);
 
-watch(() => route.query.sleeve, (value) => {
-  if (!comparisonStore.supportedBotsLoaded) return;
-  const requestedSleeve = typeof value === 'string' ? value : '';
-  comparisonStore.setSelectedSleeve(requestedSleeve);
-  if (requestedSleeve && comparisonStore.selectedSleeve !== requestedSleeve) {
-    updateQuery({ sleeve: undefined });
-  }
-});
+// Picking another bot in the navbar while on a Compare page follows it.
+watch(
+  () => botStore.selectedBot,
+  (botId) => {
+    if (
+      comparisonStore.supportedBotsLoaded &&
+      navbarBotWithData() === botId &&
+      botId !== activeBotId.value
+    ) {
+      selectBot(botId);
+    }
+  },
+);
 
-watch(() => route.query.bot, (value) => {
-  if (!comparisonStore.supportedBotsLoaded) return;
-  const requestedBot = typeof value === 'string' ? value : '';
-  if (!requestedBot) return;
-  if (!comparisonStore.isSupportedBot(requestedBot)) {
-    updateQuery({ bot: undefined, sleeve: undefined });
-    return;
-  }
-  comparisonStore.setSelectedBot(requestedBot);
-  const requestedSleeve = typeof route.query.sleeve === 'string' ? route.query.sleeve : '';
-  comparisonStore.setSelectedSleeve(requestedSleeve);
-  if (requestedSleeve && comparisonStore.selectedSleeve !== requestedSleeve) {
-    updateQuery({ sleeve: undefined });
-  }
-});
+watch(
+  () => route.query.sleeve,
+  (value) => {
+    if (!comparisonStore.supportedBotsLoaded) return;
+    const requestedSleeve = typeof value === 'string' ? value : '';
+    comparisonStore.setSelectedSleeve(requestedSleeve);
+    if (requestedSleeve && comparisonStore.selectedSleeve !== requestedSleeve) {
+      updateQuery({ sleeve: undefined });
+    }
+  },
+);
+
+watch(
+  () => route.query.bot,
+  (value) => {
+    if (!comparisonStore.supportedBotsLoaded) return;
+    const requestedBot = typeof value === 'string' ? value : '';
+    if (!requestedBot) return;
+    if (!comparisonStore.isSupportedBot(requestedBot)) {
+      updateQuery({ bot: undefined, sleeve: undefined });
+      return;
+    }
+    comparisonStore.setSelectedBot(requestedBot);
+    const requestedSleeve = typeof route.query.sleeve === 'string' ? route.query.sleeve : '';
+    comparisonStore.setSelectedSleeve(requestedSleeve);
+    if (requestedSleeve && comparisonStore.selectedSleeve !== requestedSleeve) {
+      updateQuery({ sleeve: undefined });
+    }
+  },
+);
 </script>
 
 <template>
@@ -124,15 +187,22 @@ watch(() => route.query.bot, (value) => {
       <div class="text-start">
         <h2 class="text-2xl font-semibold">Report Comparison</h2>
         <p class="text-surface-500">
-          Selected report: <span class="font-medium">{{ activeBotName || 'Loading reports…' }}</span>
-          <template v-if="comparisonStore.activeComparisonBot?.venue"> · {{ comparisonStore.activeComparisonBot.venue }}</template>
+          Selected report:
+          <span class="font-medium">{{ activeBotName || 'Loading reports…' }}</span>
+          <template v-if="comparisonStore.activeComparisonBot?.venue">
+            · {{ comparisonStore.activeComparisonBot.venue }}</template
+          >
         </p>
         <p v-if="comparisonStore.report" class="text-sm text-surface-500">
           {{ comparisonStore.report.status }} · generated {{ reportAge }}
           <template v-if="generatedAtUtc"> · as of {{ generatedAtUtc }} UTC</template>
-          <template v-if="comparisonStore.report.report_date"> · report date {{ comparisonStore.report.report_date }}</template>
+          <template v-if="comparisonStore.report.report_date">
+            · report date {{ comparisonStore.report.report_date }}</template
+          >
           <template v-if="reportWindowText"> · window {{ reportWindowText }}</template>
-          <template v-if="comparisonStore.report.reason"> · {{ comparisonStore.report.reason }}</template>
+          <template v-if="comparisonStore.report.reason">
+            · {{ comparisonStore.report.reason }}</template
+          >
         </p>
       </div>
       <div class="flex flex-col gap-2 md:flex-row md:items-center">
@@ -153,38 +223,92 @@ watch(() => route.query.bot, (value) => {
           @update:model-value="selectSleeve($event === 'All sleeves' ? '' : $event)"
         />
         <UInput v-model="timerangeInput" class="min-w-[220px]" placeholder="YYYYMMDD-YYYYMMDD" />
-        <UButton color="neutral" icon="mdi:calendar-range" @click="applyTimerange">Apply timerange</UButton>
+        <UButton color="neutral" icon="mdi:calendar-range" @click="applyTimerange"
+          >Apply timerange</UButton
+        >
       </div>
     </div>
 
-    <UAlert v-if="comparisonStore.authRequired" color="warning" class="text-start"
-      title="Reconnect to reports" description="Report access requires authentication. Continue to the report service to sign in.">
+    <UAlert
+      v-if="comparisonStore.authRequired"
+      color="warning"
+      class="text-start"
+      title="Reconnect to reports"
+      description="Report access requires authentication. Continue to the report service to sign in."
+    >
       <template #actions>
-        <a href="/api/comparison/auth-check" class="text-primary underline">Connect to reports</a>
+        <a :href="REPORTS_AUTH_BOOTSTRAP_URL" class="text-primary underline">Connect to reports</a>
       </template>
     </UAlert>
-    <UAlert v-else-if="comparisonStore.supportedBotsError" color="warning" class="text-start"
-      :title="comparisonStore.supportedBotsError">
+    <UAlert
+      v-else-if="comparisonStore.supportedBotsError"
+      color="warning"
+      class="text-start"
+      :title="comparisonStore.supportedBotsError"
+    >
       <template #actions>
-        <a href="/api/comparison/auth-check" class="text-primary underline">Connect to reports</a>
+        <a :href="REPORTS_AUTH_BOOTSTRAP_URL" class="text-primary underline">Connect to reports</a>
       </template>
     </UAlert>
-    <UAlert v-if="comparisonStore.supportedBotsLoaded && comparisonStore.supportedBots.length === 0"
-      color="info" class="text-start" title="No reports are available yet"
-      description="The report service returned an empty comparison catalog." />
-    <UAlert v-if="comparisonStore.report && comparisonStore.report.unavailable_fields.length"
-      color="warning" class="text-start" title="Unavailable report fields"
-      :description="comparisonStore.report.unavailable_fields.join(', ')" />
-    <UAlert v-if="comparisonStore.report?.annotations.length" color="info" class="text-start"
-      title="Report caveats" :description="annotationText" />
-    <UAlert v-if="comparisonStore.report?.stale" color="warning" class="text-start"
-      title="This report is marked stale" />
+    <UAlert
+      v-if="statusNotice"
+      :color="statusNotice.color"
+      class="text-start"
+      data-testid="report-status-notice"
+      :title="`${statusNotice.title} (${comparisonStore.report?.status})`"
+      :description="comparisonStore.report?.reason || 'The report service gave no reason.'"
+    >
+      <template #actions>
+        <RouterLink to="/reports" class="text-primary underline">Fleet reports</RouterLink>
+      </template>
+    </UAlert>
+    <UAlert
+      v-if="comparisonStore.supportedBotsLoaded && comparisonStore.supportedBots.length === 0"
+      color="info"
+      class="text-start"
+      title="No reports are available yet"
+      description="The report service returned an empty comparison catalog."
+    />
+    <UAlert
+      v-if="comparisonStore.report && comparisonStore.report.unavailable_fields.length"
+      color="warning"
+      class="text-start"
+      title="Unavailable report fields"
+      :description="comparisonStore.report.unavailable_fields.join(', ')"
+    />
+    <UAlert
+      v-if="comparisonStore.report?.annotations.length"
+      color="info"
+      class="text-start"
+      title="Report caveats"
+      :description="annotationText"
+    />
+    <UAlert
+      v-if="comparisonStore.report?.stale"
+      color="warning"
+      class="text-start"
+      title="This report is marked stale"
+    />
 
     <div class="flex flex-wrap gap-2 border-b border-surface-300 pb-2">
-      <RouterLink v-for="item in navItems" :key="item.to" :to="{ path: item.to, query: route.query }"
+      <RouterLink
+        v-for="item in navItems"
+        :key="item.to"
+        :to="{ path: item.to, query: route.query }"
         class="px-3 py-2 rounded-md transition-colors"
-        :class="route.path === item.to ? 'bg-primary text-primary-contrast' : 'bg-surface-100 dark:bg-surface-800'">
+        :class="
+          route.path === item.to
+            ? 'bg-primary text-primary-contrast'
+            : 'bg-surface-100 dark:bg-surface-800'
+        "
+      >
         {{ item.label }}
+      </RouterLink>
+      <RouterLink
+        to="/reports"
+        class="px-3 py-2 rounded-md bg-surface-100 dark:bg-surface-800 ms-auto"
+      >
+        All bots' reports →
       </RouterLink>
     </div>
     <RouterView />

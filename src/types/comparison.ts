@@ -21,6 +21,13 @@ export interface MetricsResult {
   avg_duration_hours: number | null;
   total_profit_pct: number | null;
   expectancy: number | null;
+  /** Fleet-report bots also carry these (absent on central bundles). */
+  cagr_pct?: number | null;
+  sortino_ratio?: number | null;
+  calmar_ratio?: number | null;
+  avg_profit_pct?: number | null;
+  avg_win_pct?: number | null;
+  avg_loss_pct?: number | null;
 }
 
 export interface EquityPoint {

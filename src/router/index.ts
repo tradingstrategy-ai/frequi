@@ -1,4 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router';
+import { loggedInBots } from '@/composables/loginInfo';
+import { connectRegistryBots } from '@/composables/dashboardRegistry';
 import { createRouter, createWebHistory } from 'vue-router';
 
 const routes: Array<RouteRecordRaw> = [
@@ -19,6 +21,12 @@ const routes: Array<RouteRecordRaw> = [
     path: '/graph',
     name: 'Freqtrade Graph',
     component: () => import('@/views/ChartsView.vue'),
+  },
+  {
+    path: '/reports',
+    name: 'Live vs Backtest Reports',
+    component: () => import('@/views/FleetReportsView.vue'),
+    meta: { allowAnonymous: true },
   },
   {
     path: '/compare',
@@ -43,6 +51,11 @@ const routes: Array<RouteRecordRaw> = [
         path: 'pairs',
         name: 'Freqtrade Compare Pairs',
         component: () => import('@/views/comparison/PairCategoryAnalysis.vue'),
+      },
+      {
+        path: 'report',
+        name: 'Freqtrade Compare Report',
+        component: () => import('@/views/comparison/FleetReportTab.vue'),
       },
       {
         path: 'trades',
@@ -122,7 +135,18 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   // Comparison has its own report-backed selection and works before any Freqtrade login.
-  if (to.path === '/compare' || to.path.startsWith('/compare/')) return true;
+  // Bots already connected in this browser are still initialized, so the navbar keeps
+  // showing the selected bot when a comparison page is opened directly.
+  if (to.path === '/compare' || to.path.startsWith('/compare/')) {
+    if (Object.keys(loggedInBots.value).length > 0) {
+      initBots();
+    } else {
+      // Cold load straight onto a comparison page: still connect the gateway's bots so
+      // the navbar shows the bot and the other pages are ready (no-op without a gateway).
+      void connectRegistryBots();
+    }
+    return true;
+  }
 
   // Init normal trading bots here...
   initBots();

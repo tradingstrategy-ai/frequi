@@ -18,10 +18,12 @@ const hasContent = computed(() => {
 function withUnknownDirection(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(withUnknownDirection);
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, child]) => [
-      key,
-      key === 'direction' && child === null ? 'Unknown' : withUnknownDirection(child),
-    ]));
+    return Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [
+        key,
+        key === 'direction' && child === null ? 'Unknown' : withUnknownDirection(child),
+      ]),
+    );
   }
   return value;
 }
