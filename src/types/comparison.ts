@@ -165,3 +165,30 @@ export interface ComparisonBotInfo {
 export interface ComparisonBotsResponse {
   bots: ComparisonBotInfo[];
 }
+
+/** Funding received by a funding-harvesting bot; `GET /api/comparison/funding`. */
+export type FundingStatus = 'ok' | 'stale' | 'unavailable' | 'invalid';
+
+export interface FundingAmounts {
+  claimed_usd: number;
+  settled_usd: number;
+  pending_usd: number;
+  total_received_usd: number;
+  unpriced_count: number;
+  claim_count: number;
+  last_claim_at_utc: string | null;
+}
+
+export interface FundingBotRow {
+  bot_id: string;
+  status: FundingStatus;
+  reason: string | null;
+  as_of: string | null;
+  /** Present only for `ok` and `stale`. */
+  funding: FundingAmounts | null;
+}
+
+export interface FundingResponse {
+  schema_version: string;
+  bots: FundingBotRow[];
+}

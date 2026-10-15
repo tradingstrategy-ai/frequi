@@ -4,6 +4,7 @@ import { getComparisonApiBase } from '@/config/presetBots';
 import type {
   CandlesResponse,
   ComparisonBotsResponse,
+  FundingResponse,
   OverviewResponse,
   PairsResponse,
   TimelineResponse,
@@ -26,6 +27,11 @@ function comparisonParams(timerange?: string, sleeve?: string): Record<string, s
 
 export async function fetchComparisonBots(): Promise<ComparisonBotsResponse> {
   const { data } = await comparisonApi.get<ComparisonBotsResponse>('/bots');
+  return data;
+}
+
+export async function fetchFunding(): Promise<FundingResponse> {
+  const { data } = await comparisonApi.get<FundingResponse>('/funding');
   return data;
 }
 
