@@ -35,9 +35,11 @@ function navbarBotWithData(): string {
 
 const navItems = [
   { label: 'Overview', to: '/compare/overview' },
+  { label: 'Execution', to: '/compare/execution' },
   { label: 'Timeline', to: '/compare/timeline' },
-  { label: 'Pairs', to: '/compare/pairs' },
-  { label: 'Deep Dive', to: '/compare/trades' },
+  { label: 'Pairs & Overlays', to: '/compare/pairs' },
+  { label: 'Universe & Signals', to: '/compare/universe' },
+  { label: 'Trade Detail', to: '/compare/trades' },
   { label: 'Report', to: '/compare/report' },
 ];
 const reportAge = computed(() => {
@@ -82,6 +84,8 @@ function selectBot(botId: string) {
   updateQuery({
     bot: botId,
     sleeve: comparisonStore.selectedSleeve || undefined,
+    // Report keys (per-strategy files) belong to one bot.
+    report: undefined,
   });
 }
 

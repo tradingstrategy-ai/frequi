@@ -150,6 +150,8 @@ export interface BtMarker {
   type: 'entry' | 'exit';
   direction: 'LONG' | 'SHORT' | null;
   is_matched: boolean;
+  /** Hover text from the report (newline-separated details), when the source has one. */
+  label?: string;
 }
 
 export interface CandlesResponse {

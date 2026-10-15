@@ -62,6 +62,8 @@ use([
 const props = defineProps<{
   trades: Trade[];
   btMarkers?: BtMarker[];
+  /** Live fills as the comparison report recorded them (drawn next to BT fills). */
+  liveMarkers?: BtMarker[];
   dataset: PairHistory;
   heikinAshi: boolean;
   showMarkArea: boolean;
@@ -131,7 +133,8 @@ function generateBtMarkerSeries(markers: BtMarker[]): ScatterSeriesOption {
       marker.is_matched ? '#2563eb' : '#93c5fd',
       isEntry ? rotation : marker.direction === null ? 90 : isLong ? 180 : 0,
       marker.is_matched ? 0.95 : 0.55,
-      `${marker.direction ?? 'Unknown'} ${marker.type}${marker.is_matched ? '' : ' (BT only)'}`,
+      marker.label?.replace(/\n/g, ' · ') ??
+        `${marker.direction ?? 'Unknown'} ${marker.type}${marker.is_matched ? '' : ' (BT only)'}`,
     ];
   });
 
@@ -159,6 +162,31 @@ function generateBtMarkerSeries(markers: BtMarker[]): ScatterSeriesOption {
     symbolRotate: (value) => value[4],
     symbolSize: 12,
     data: markerData,
+  };
+}
+
+/** Report live fills: hollow diamonds, so they read apart from FreqUI's own trade arrows. */
+function generateLiveMarkerSeries(markers: BtMarker[]): ScatterSeriesOption {
+  return {
+    name: 'Live (report)',
+    type: 'scatter',
+    xAxisIndex: 0,
+    yAxisIndex: 0,
+    encode: { x: 0, y: 1, tooltip: 2 },
+    symbol: 'diamond',
+    symbolSize: 11,
+    itemStyle: {
+      color: 'rgba(0,0,0,0)',
+      borderColor: '#f97316',
+      borderWidth: 2,
+      opacity: 0.95,
+    },
+    data: markers.map((marker) => [
+      new Date(marker.date).getTime(),
+      marker.price,
+      marker.label?.replace(/\n/g, ' · ') ??
+        `Live ${marker.direction ?? ''} ${marker.type}${marker.is_matched ? '' : ' (live only)'}`,
+    ]),
   };
 }
 
@@ -625,6 +653,9 @@ function updateChart(initial = false) {
   if (props.btMarkers && props.btMarkers.length > 0) {
     addLegend('BT Overlay', 5);
   }
+  if (props.liveMarkers && props.liveMarkers.length > 0) {
+    addLegend('Live (report)', 6);
+  }
   const tradesSeries: ScatterSeriesOption = generateTradeSeries(
     nameTrades,
     props.theme,
@@ -635,6 +666,9 @@ function updateChart(initial = false) {
     options.series.push(tradesSeries);
     if (props.btMarkers && props.btMarkers.length > 0) {
       options.series.push(generateBtMarkerSeries(props.btMarkers));
+    }
+    if (props.liveMarkers && props.liveMarkers.length > 0) {
+      options.series.push(generateLiveMarkerSeries(props.liveMarkers));
     }
   }
 
@@ -791,7 +825,13 @@ watch([() => props.useUTC, () => props.theme, () => props.plotConfig], () =>
 );
 
 watch(
-  [() => props.dataset, () => props.heikinAshi, () => props.showMarkArea, () => props.btMarkers],
+  [
+    () => props.dataset,
+    () => props.heikinAshi,
+    () => props.showMarkArea,
+    () => props.btMarkers,
+    () => props.liveMarkers,
+  ],
   () => updateChart(),
 );
 

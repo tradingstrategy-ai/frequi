@@ -189,7 +189,7 @@ const singlePairSelection = computed({
             v-if="comparisonStore.isSupportedBot(botStore.selectedBot)"
             v-model="settingsStore.showBtTradeOverlay"
           >
-            <span class="text-nowrap">Show BT trades</span>
+            <span class="text-nowrap">Show BT vs live fills</span>
           </BaseCheckbox>
 
           <div class="me-0 md:me-1 flex grow">

@@ -1,0 +1,28 @@
+// Chart page: pick a bot and pair, turn on "Show BT vs live fills", screenshot the chart.
+import { chromium } from '@playwright/test';
+import { mkdirSync } from 'node:fs';
+const BASE = 'http://100.72.126.50:9298';
+const [bot = 'bb-revert', pairQuery = 'AVAX'] = process.argv.slice(2);
+mkdirSync((process.env.OUT_DIR ?? new URL('./out/', import.meta.url).pathname) + 'chart', { recursive: true });
+const browser = await chromium.launch();
+const page = await (await browser.newContext({ viewport: { width: 1600, height: 1000 } })).newPage();
+const errors = [];
+page.on('pageerror', (e) => errors.push(String(e).slice(0, 200)));
+page.on('response', (r) => { if (r.url().includes('/candles')) console.log('candles', r.status(), r.url().replace(BASE, '').slice(0, 140)); });
+await page.addInitScript((id) => localStorage.setItem('ftSelectedBot', id), bot);
+await page.goto(`${BASE}/graph`, { waitUntil: 'domcontentloaded' });
+await page.waitForTimeout(6000);
+await page.screenshot({ path: `${process.env.OUT_DIR ?? new URL('./out/', import.meta.url).pathname}chart/${bot}-loaded.png` });
+console.log('url', page.url(), 'comboboxes', JSON.stringify(await page.locator('[role="combobox"], button[aria-haspopup]').allInnerTexts()));
+await page.getByText('Show BT vs live fills').click();
+await page.waitForTimeout(1500);
+await page.locator('[class*="md:w-80"]').first().click();
+await page.waitForTimeout(500);
+await page.keyboard.type(pairQuery);
+await page.waitForTimeout(800);
+await page.getByRole('option').filter({ hasText: pairQuery }).first().click();
+await page.keyboard.press('Escape');
+await page.waitForTimeout(6000);
+await page.screenshot({ path: `${process.env.OUT_DIR ?? new URL('./out/', import.meta.url).pathname}chart/${bot}-${pairQuery}.png` });
+console.log('errors', JSON.stringify(errors.slice(0, 3)));
+await browser.close();

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ReportSections from '@/components/comparison/report/ReportSections.vue';
 import type { OverviewResponse } from '@/types';
 import { fetchOverview } from '@/composables/comparisonApi';
 import { useComparison } from '@/composables/useComparison';
@@ -205,5 +206,6 @@ watch(
       title="No overview data"
       detail="The comparison backend has not returned overview data for the selected bot yet."
     />
+    <ReportSections tab="overview" />
   </div>
 </template>

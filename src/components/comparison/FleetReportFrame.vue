@@ -31,6 +31,8 @@ interface ReportListing {
   report_date: string | null;
   run_id: string | null;
   files: ReportFile[];
+  /** Set when the central validation gate rejected the bot's report (e.g. NOT_VALIDATED). */
+  withheld?: { status: string; reason: string | null };
 }
 
 const route = useRoute();
@@ -120,6 +122,16 @@ watch(() => props.slug, load, { immediate: true });
       </UButton>
     </div>
     <UAlert v-if="error" color="warning" class="text-start" :title="error" />
+    <UAlert
+      v-else-if="listing?.withheld"
+      color="warning"
+      class="text-start"
+      data-testid="report-withheld"
+      :title="`The report is withheld (${listing.withheld.status})`"
+      :description="
+        listing.withheld.reason || 'The central validation gate did not accept this report.'
+      "
+    />
     <div v-else-if="loading" class="text-surface-500 text-sm text-start">Loading report…</div>
     <UAlert
       v-else-if="selectedFile && needsConfirmation"

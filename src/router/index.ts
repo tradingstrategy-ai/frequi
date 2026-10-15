@@ -43,6 +43,21 @@ const routes: Array<RouteRecordRaw> = [
         component: () => import('@/views/comparison/ComparisonOverview.vue'),
       },
       {
+        path: 'execution',
+        name: 'Freqtrade Compare Execution',
+        component: () => import('@/views/comparison/ReportTabView.vue'),
+        props: {
+          tab: 'execution',
+          heading: 'Execution quality, slippage and price impact',
+        },
+      },
+      {
+        path: 'universe',
+        name: 'Freqtrade Compare Universe',
+        component: () => import('@/views/comparison/ReportTabView.vue'),
+        props: { tab: 'universe', heading: 'Trading universe, ranker and signal parity' },
+      },
+      {
         path: 'timeline',
         name: 'Freqtrade Compare Timeline',
         component: () => import('@/views/comparison/TradeTimeline.vue'),

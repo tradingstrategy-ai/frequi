@@ -85,6 +85,16 @@ const btMarkers = computed<BtMarker[]>(() => {
   );
 });
 
+const liveMarkers = computed<BtMarker[]>(() => {
+  if (!settingsStore.showBtTradeOverlay || !comparisonCapable.value || !props.pair) {
+    return [];
+  }
+  return (
+    comparisonStore.getCachedCandles(botStore.selectedBot, props.pair, props.timeframe)
+      ?.live_markers ?? []
+  );
+});
+
 function refresh() {
   emit('refreshData', props.pair, plotStore.usedColumns);
 }
@@ -196,6 +206,7 @@ watch(
           :dataset="dataset"
           :trades="trades"
           :bt-markers="btMarkers"
+          :live-markers="liveMarkers"
           :plot-config="plotStore.plotConfig"
           :heikin-ashi="settingsStore.useHeikinAshiCandles"
           :show-mark-area="settingsStore.showMarkArea"

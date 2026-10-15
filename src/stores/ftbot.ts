@@ -251,7 +251,8 @@ export function createBotSubStore(botId: string, botName: string) {
       }
       try {
         refreshing.value = true;
-        await Promise.all([getState(), getProfit(), getBalance()]);
+        // A slow bot (some answer /balance in 20 s+) must not fail the whole light refresh.
+        await Promise.allSettled([getState(), getProfit(), getBalance()]);
       } finally {
         refreshing.value = false;
       }
@@ -259,7 +260,7 @@ export function createBotSubStore(botId: string, botName: string) {
     // A bot that becomes part of the multi-bot views needs its full data right away.
     watch(isSelected, (selected) => {
       if (selected && botStatusAvailable.value) {
-        void refreshSlow(true);
+        refreshSlow(true).catch((error) => console.warn('refresh after selection failed', error));
       }
     });
 

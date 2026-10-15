@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ReportSections from '@/components/comparison/report/ReportSections.vue';
 import { useComparison } from '@/composables/useComparison';
 
 const { comparisonStore, activeBotId, activeTimerange, activeSleeve } = useComparison();
@@ -142,5 +143,6 @@ const slippageRows = computed<Row[]>(() => (data.value?.slippage ?? []).map((r) 
       title="No report trade data"
       detail="Choose a report from the comparison catalog to view the trade deep dive."
     />
+    <ReportSections tab="trades" />
   </div>
 </template>

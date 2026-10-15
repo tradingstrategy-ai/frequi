@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ReportSections from '@/components/comparison/report/ReportSections.vue';
 import { useComparison } from '@/composables/useComparison';
 
 const { comparisonStore, activeBotId, activeTimerange, activeSleeve } = useComparison();
@@ -211,5 +212,6 @@ const delays = computed(() => {
       title="No report timeline data"
       detail="Choose a report from the comparison catalog to view its timeline."
     />
+    <ReportSections tab="timeline" />
   </div>
 </template>

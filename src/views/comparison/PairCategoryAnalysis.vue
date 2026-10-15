@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ReportSections from '@/components/comparison/report/ReportSections.vue';
 import { useComparison } from '@/composables/useComparison';
 
 const { comparisonStore, activeBotId, activeTimerange, activeSleeve } = useComparison();
@@ -127,5 +128,6 @@ const categoryRows = computed<Row[]>(() => (data.value?.categories ?? []).map((r
       title="No report pair data"
       detail="Choose a report from the comparison catalog to view pair and category analysis."
     />
+    <ReportSections tab="pairs" />
   </div>
 </template>
