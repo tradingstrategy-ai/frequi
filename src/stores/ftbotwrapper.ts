@@ -376,6 +376,16 @@ export const useBotStore = defineStore('ftbot-wrapper', (): BotStoreSetup => {
   const BACKGROUND_EVERY_TICKS = 12;
   let frequentTick = 0;
 
+  /**
+   * Wait for every bot's refresh; one slow or failing bot (a 503 from the gateway's
+   * wait cap, a timeout) must not reject the whole round as an unhandled error.
+   */
+  async function settleAll(updates: Promise<unknown>[], what: string) {
+    const results = await Promise.allSettled(updates);
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    if (failed) console.warn(`${what}: ${failed} of ${results.length} bot refreshes failed`);
+  }
+
   async function allRefreshFrequent(forceUpdate = false) {
     frequentTick += 1;
     const backgroundTurn = forceUpdate || frequentTick % BACKGROUND_EVERY_TICKS === 0;
@@ -393,8 +403,7 @@ export const useBotStore = defineStore('ftbot-wrapper', (): BotStoreSetup => {
         }
       }
     });
-    await Promise.all(updates);
-    return Promise.resolve();
+    await settleAll(updates, 'frequent refresh');
   }
 
   async function allRefreshSlow(forceUpdate = false) {
@@ -404,7 +413,7 @@ export const useBotStore = defineStore('ftbot-wrapper', (): BotStoreSetup => {
         updates.push(isForeground(store) ? store.refreshSlow(forceUpdate) : store.refreshLight());
       }
     });
-    await Promise.all(updates);
+    await settleAll(updates, 'slow refresh');
   }
 
   async function pingAll() {
@@ -432,7 +441,7 @@ export const useBotStore = defineStore('ftbot-wrapper', (): BotStoreSetup => {
       await store.getState();
     }
     if (store.refreshNow) {
-      await Promise.all([store.refreshFrequent(), store.refreshSlow(true)]);
+      await settleAll([store.refreshFrequent(), store.refreshSlow(true)], store.botId);
     }
   }
 
@@ -457,7 +466,7 @@ export const useBotStore = defineStore('ftbot-wrapper', (): BotStoreSetup => {
           botStoreUpdates.push(bot.getState());
         }
       });
-      await Promise.all(botStoreUpdates);
+      await settleAll(botStoreUpdates, 'bot state');
 
       const updates: Promise<void>[] = [];
       updates.push(allRefreshFrequent(false));

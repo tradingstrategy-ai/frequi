@@ -7,12 +7,12 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 
 const BASE = process.env.DASHBOARD_URL ?? 'http://100.72.126.50:9298';
 const THROTTLE = Number(process.env.CPU_THROTTLE ?? 1);
-const OUT = new URL('./explore-clicks/', import.meta.url).pathname;
+const OUT = (process.env.OUT_DIR ?? new URL('./', import.meta.url).pathname) + 'explore-clicks/';
 mkdirSync(OUT, { recursive: true });
 const log = [];
 const note = (...a) => { const l = a.join(' '); log.push(l); console.log(l); };
 
-const browser = await chromium.launch({ channel: 'chrome' });
+const browser = await chromium.launch(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {});
 const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
 const page = await context.newPage();
 const errors = [];
@@ -47,7 +47,7 @@ await page.waitForTimeout(8000);
 note('  after 8 s idle:', JSON.stringify(await blocked()), `api requests so far: ${requests}`);
 await page.screenshot({ path: OUT + '00-open.png' });
 
-for (const label of ['Dashboard', 'Chart', 'Compare', 'Reports', 'Trade', 'Logs', 'Dashboard']) {
+for (const label of ['Dashboard', 'Chart', 'Compare', 'Execution', 'Universe & Signals', 'Trade Detail', 'Reports', 'Trade', 'Logs', 'Dashboard']) {
   note(`\n# click "${label}"`);
   const before = page.url();
   t0 = Date.now();

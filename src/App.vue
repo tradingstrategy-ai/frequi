@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { prefetchRoutePages } from '@/router';
+
 const settingsStore = useSettingsStore();
 const colorStore = useColorStore();
 onMounted(() => {
   setTimezone(settingsStore.timezone);
   colorStore.updateProfitLossColor();
+  // Before bot polling fills the connection pool (see prefetchRoutePages).
+  prefetchRoutePages();
 });
 watch(
   () => settingsStore.timezone,

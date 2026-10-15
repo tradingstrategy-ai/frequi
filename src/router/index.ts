@@ -177,4 +177,19 @@ router.beforeEach((to) => {
   }
 });
 
+/**
+ * Download every lazily loaded page now, while the browser is idle.
+ *
+ * Behind the dashboard gateway all bots share one origin over HTTP/1.1 (six connections
+ * per host). A page whose code is fetched on first click can wait behind dozens of bot
+ * polls and candle reads, so a click seems to do nothing for seconds.
+ */
+export function prefetchRoutePages(): void {
+  const loaders = router
+    .getRoutes()
+    .flatMap((route) => Object.values(route.components ?? {}))
+    .filter((component): component is () => Promise<unknown> => typeof component === 'function');
+  void Promise.allSettled(loaders.map((load) => load()));
+}
+
 export default router;
