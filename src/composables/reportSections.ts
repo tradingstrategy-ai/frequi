@@ -55,6 +55,13 @@ export type ReportBlock =
   | { type: 'group'; title: string; blocks: ReportBlock[] }
   | { type: 'figure'; id: string; title: string; height: number | null; bytes?: number }
   | {
+      /** A link to a chart elsewhere in the report (a trade card's pair overlay). */
+      type: 'anchor-figure';
+      label: string;
+      anchor: string;
+      figures: { id: string; title: string; bytes?: number }[];
+    }
+  | {
       type: 'ranker';
       title: string;
       notes: SafeHtml[];
@@ -145,6 +152,12 @@ export async function fetchTradeMarkers(
     params: { pair },
   });
   return data;
+}
+
+/** URL of a file the report links to (CSV export, ranker-evidence page), via the gateway. */
+export function reportFileUrl(botId: string, report: string | undefined, name: string): string {
+  const query = new URLSearchParams({ name, ...(report ? { report } : {}) });
+  return `${getComparisonApiBase()}/${encodeURIComponent(botId)}/file?${query.toString()}`;
 }
 
 /** Labels of the Compare tabs that show report chunks. */

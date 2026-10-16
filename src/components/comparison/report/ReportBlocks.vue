@@ -6,7 +6,7 @@
  * Collapsed `details` render their content only once opened, so a section with dozens of
  * per-pair overlays costs nothing until one is expanded.
  */
-import type { ReportBlock } from '@/composables/reportSections';
+import { reportFileUrl, type ReportBlock } from '@/composables/reportSections';
 
 import RankerAdmission from './RankerAdmission.vue';
 import ReportFigure from './ReportFigure.vue';
@@ -14,13 +14,33 @@ import ReportTable from './ReportTable.vue';
 
 defineOptions({ name: 'ReportBlocks' });
 
-defineProps<{
+const props = defineProps<{
   blocks: ReportBlock[];
   botId: string;
   report?: string;
 }>();
 
+/** Links to files next to the report (`<a data-file>` from the gateway) open in a new tab. */
+function openFileLink(event: MouseEvent) {
+  const link = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>('a[data-file]');
+  const name = link?.dataset.file;
+  if (!name) return;
+  event.preventDefault();
+  // Nested block lists carry the same handler: open once, at the innermost list.
+  event.stopPropagation();
+  window.open(reportFileUrl(props.botId, props.report, name), '_blank', 'noopener');
+}
+
 const opened = ref(new Set<number>());
+/** Linked charts (trade card -> pair overlay) the reader expanded. */
+const shownLinks = ref(new Set<number>());
+
+function toggleLink(index: number) {
+  const next = new Set(shownLinks.value);
+  if (next.has(index)) next.delete(index);
+  else next.add(index);
+  shownLinks.value = next;
+}
 
 function toggle(index: number, event: Event) {
   const isOpen = (event.target as HTMLDetailsElement).open;
@@ -47,7 +67,7 @@ const VALUE_CLASSES: Record<string, string> = {
 </script>
 
 <template>
-  <div class="report-html flex flex-col gap-3 text-start min-w-0">
+  <div class="report-html flex flex-col gap-3 text-start min-w-0" @click="openFileLink">
     <template v-for="(block, index) in blocks" :key="index">
       <template v-if="block.type === 'heading'">
         <h4 v-if="block.level <= 3" class="font-semibold text-base mt-2">{{ block.text }}</h4>
@@ -144,6 +164,34 @@ const VALUE_CLASSES: Record<string, string> = {
         :bytes="block.bytes"
       />
 
+      <div
+        v-else-if="block.type === 'anchor-figure'"
+        class="flex flex-col gap-2"
+        data-testid="report-linked-figure"
+      >
+        <UButton
+          size="xs"
+          variant="outline"
+          class="self-start"
+          :icon="shownLinks.has(index) ? 'mdi:chevron-up' : 'mdi:chart-line'"
+          @click="toggleLink(index)"
+        >
+          {{ shownLinks.has(index) ? 'Hide' : block.label }}
+        </UButton>
+        <template v-if="shownLinks.has(index)">
+          <ReportFigure
+            v-for="linked in block.figures"
+            :key="linked.id"
+            :bot-id="botId"
+            :report="report"
+            :figure-id="linked.id"
+            :title="linked.title"
+            :height="null"
+            :bytes="linked.bytes"
+          />
+        </template>
+      </div>
+
       <RankerAdmission
         v-else-if="block.type === 'ranker'"
         :title="block.title"
@@ -199,6 +247,11 @@ const VALUE_CLASSES: Record<string, string> = {
 }
 .report-html :deep(.warn) {
   color: rgb(217 119 6);
+}
+.report-html :deep(a[data-file]) {
+  color: rgb(56 139 253);
+  text-decoration: underline;
+  cursor: pointer;
 }
 .report-html :deep(code) {
   font-size: 0.8em;
