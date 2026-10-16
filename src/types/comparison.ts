@@ -154,9 +154,24 @@ export interface BtMarker {
   label?: string;
 }
 
+/** A strategy indicator line from the report's per-pair overlay chart (price axis). */
+export interface ReportIndicatorLine {
+  name: string;
+  /** UTC timestamps (`YYYY-MM-DDTHH:MM:SS`); null splits the line. */
+  x: (string | null)[];
+  y: (number | null)[];
+  color: string | null;
+  dash: string | null;
+  fill: string | null;
+}
+
 export interface CandlesResponse {
   bt_markers: BtMarker[];
   live_markers: BtMarker[];
+  /** Fleet reports only: the strategy's indicator lines for the pair. */
+  indicators?: ReportIndicatorLine[];
+  /** Fleet reports only: the full overlay figure for the pair. */
+  overlay?: { report: string; figure: string; title: string } | null;
   report: DashboardReportMetadata;
 }
 

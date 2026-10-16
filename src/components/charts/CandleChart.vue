@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type {
   BtMarker,
+  ReportIndicatorLine,
   ChartSliderPosition,
   IndicatorConfig,
   PairHistory,
@@ -11,7 +12,7 @@ import { ChartType } from '@/types';
 
 import ECharts from 'vue-echarts';
 
-import type { EChartsOption, ScatterSeriesOption } from 'echarts';
+import type { EChartsOption, LineSeriesOption, ScatterSeriesOption, SeriesOption } from 'echarts';
 import { BarChart, CandlestickChart, LineChart, ScatterChart } from 'echarts/charts';
 import {
   AxisPointerComponent,
@@ -64,6 +65,8 @@ const props = defineProps<{
   btMarkers?: BtMarker[];
   /** Live fills as the comparison report recorded them (drawn next to BT fills). */
   liveMarkers?: BtMarker[];
+  /** Strategy indicator lines from the comparison report (entry levels, ATR bands). */
+  indicatorLines?: ReportIndicatorLine[];
   dataset: PairHistory;
   heikinAshi: boolean;
   showMarkArea: boolean;
@@ -162,6 +165,58 @@ function generateBtMarkerSeries(markers: BtMarker[]): ScatterSeriesOption {
     symbolRotate: (value) => value[4],
     symbolSize: 12,
     data: markerData,
+  };
+}
+
+/**
+ * Keep only report points inside the loaded candles: report series and fills span the
+ * whole report window (months), and points outside the candles would widen the x axis
+ * until the candles are a sliver at its edge.
+ */
+function inCandleRange(timestamp: number | null): boolean {
+  if (timestamp === null || !Number.isFinite(timestamp)) return false;
+  const start = props.dataset.data_start_ts ?? -Infinity;
+  const stop = (props.dataset.data_stop_ts ?? Infinity) + (props.dataset.timeframe_ms ?? 0);
+  return timestamp >= start && timestamp <= stop;
+}
+
+function markersInRange(markers: BtMarker[] | undefined): BtMarker[] {
+  return (markers ?? []).filter((marker) => inCandleRange(new Date(marker.date).getTime()));
+}
+
+const INDICATOR_COLORS = [
+  '#e879f9',
+  '#facc15',
+  '#2dd4bf',
+  '#fb923c',
+  '#a78bfa',
+  '#f472b6',
+  '#4ade80',
+];
+
+/** One report indicator as a thin line on the price axis (nulls split segments). */
+function generateIndicatorSeries(line: ReportIndicatorLine, index: number): LineSeriesOption {
+  return {
+    name: line.name,
+    type: 'line',
+    xAxisIndex: 0,
+    yAxisIndex: 0,
+    showSymbol: false,
+    connectNulls: false,
+    lineStyle: {
+      width: 1.2,
+      color: line.color ?? INDICATOR_COLORS[index % INDICATOR_COLORS.length],
+      type: line.dash && line.dash !== 'solid' ? 'dashed' : 'solid',
+    },
+    itemStyle: { color: line.color ?? INDICATOR_COLORS[index % INDICATOR_COLORS.length] },
+    data: line.x
+      .map((x, i): [number | null, number | null] => [
+        x ? Date.parse(`${x}Z`) : null,
+        line.y[i] ?? null,
+      ])
+      // A null-x point is a deliberate gap: keep it as a break in the line.
+      .filter(([x]) => x === null || inCandleRange(x))
+      .map(([x, y]) => (x === null ? [null, null] : [x, y])),
   };
 }
 
@@ -650,10 +705,12 @@ function updateChart(initial = false) {
   const nameTrades = 'Trades';
   // Insert trades into legend, after the default columns
   addLegend(nameTrades, 4);
-  if (props.btMarkers && props.btMarkers.length > 0) {
+  const btInRange = markersInRange(props.btMarkers);
+  const liveInRange = markersInRange(props.liveMarkers);
+  if (btInRange.length > 0) {
     addLegend('BT Overlay', 5);
   }
-  if (props.liveMarkers && props.liveMarkers.length > 0) {
+  if (liveInRange.length > 0) {
     addLegend('Live (report)', 6);
   }
   const tradesSeries: ScatterSeriesOption = generateTradeSeries(
@@ -664,12 +721,16 @@ function updateChart(initial = false) {
   );
   if (Array.isArray(options.series)) {
     options.series.push(tradesSeries);
-    if (props.btMarkers && props.btMarkers.length > 0) {
-      options.series.push(generateBtMarkerSeries(props.btMarkers));
+    if (btInRange.length > 0) {
+      options.series.push(generateBtMarkerSeries(btInRange));
     }
-    if (props.liveMarkers && props.liveMarkers.length > 0) {
-      options.series.push(generateLiveMarkerSeries(props.liveMarkers));
+    if (liveInRange.length > 0) {
+      options.series.push(generateLiveMarkerSeries(liveInRange));
     }
+    (props.indicatorLines ?? []).forEach((line, index) => {
+      addLegend(line.name);
+      (options.series as SeriesOption[]).push(generateIndicatorSeries(line, index));
+    });
   }
 
   // Merge this into original data
@@ -831,6 +892,7 @@ watch(
     () => props.showMarkArea,
     () => props.btMarkers,
     () => props.liveMarkers,
+    () => props.indicatorLines,
   ],
   () => updateChart(),
 );

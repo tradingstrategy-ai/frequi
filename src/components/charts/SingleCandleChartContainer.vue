@@ -2,6 +2,7 @@
 import type { BtMarker, ChartSliderPosition, PairHistory, Trade } from '@/types';
 import { LoadingStatus } from '@/types';
 import { useComparisonStore } from '@/stores/comparisonStore';
+import ReportFigure from '@/components/comparison/report/ReportFigure.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -94,6 +95,17 @@ const liveMarkers = computed<BtMarker[]>(() => {
       ?.live_markers ?? []
   );
 });
+
+const cachedCandles = computed(() =>
+  settingsStore.showBtTradeOverlay && comparisonCapable.value && props.pair
+    ? comparisonStore.getCachedCandles(botStore.selectedBot, props.pair, props.timeframe)
+    : undefined,
+);
+/** The strategy's indicator lines from the report's overlay chart for this pair. */
+const indicatorLines = computed(() => cachedCandles.value?.indicators ?? []);
+/** The report's full overlay figure for this pair (candles, fills, all indicator panels). */
+const reportOverlay = computed(() => cachedCandles.value?.overlay ?? null);
+const showReportOverlay = ref(false);
 
 function refresh() {
   emit('refreshData', props.pair, plotStore.usedColumns);
@@ -192,9 +204,37 @@ watch(
           </div>
         </div>
       </div>
-      <div>
+      <div class="flex items-center gap-2">
         {{ pair || 'Pair' }}
+        <UButton
+          v-if="reportOverlay"
+          size="xs"
+          variant="outline"
+          icon="mdi:chart-box-outline"
+          data-testid="open-report-overlay"
+          title="The daily report's chart for this pair: BT and live fills with every strategy indicator panel"
+          @click="showReportOverlay = true"
+        >
+          Report overlay
+        </UButton>
       </div>
+      <UModal
+        v-if="reportOverlay"
+        v-model:open="showReportOverlay"
+        :title="reportOverlay.title"
+        description="From the daily live-vs-backtest report. Indicators are recomputed from venue candles, so backtest and live share them."
+        :ui="{ content: 'max-w-[95vw] w-[95vw]' }"
+      >
+        <template #body>
+          <ReportFigure
+            :bot-id="botStore.selectedBot"
+            :report="reportOverlay.report"
+            :figure-id="reportOverlay.figure"
+            :title="reportOverlay.title"
+            :height="null"
+          />
+        </template>
+      </UModal>
       <div class="w-4 h-4">
         <UProgress v-if="isLoadingDataset" stroke-width="4" small label="Spinning" />
       </div>
@@ -207,6 +247,7 @@ watch(
           :trades="trades"
           :bt-markers="btMarkers"
           :live-markers="liveMarkers"
+          :indicator-lines="indicatorLines"
           :plot-config="plotStore.plotConfig"
           :heikin-ashi="settingsStore.useHeikinAshiCandles"
           :show-mark-area="settingsStore.showMarkArea"
