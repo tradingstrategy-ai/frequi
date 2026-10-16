@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BtMarker, ChartSliderPosition, PairHistory, Trade } from '@/types';
+import type { BtMarker, ChartSliderPosition, PairHistory, PlotConfig, Trade } from '@/types';
 import { LoadingStatus } from '@/types';
 import { useComparisonStore } from '@/stores/comparisonStore';
 import ReportFigure from '@/components/comparison/report/ReportFigure.vue';
@@ -106,6 +106,20 @@ const indicatorLines = computed(() => cachedCandles.value?.indicators ?? []);
 /** The report's full overlay figure for this pair (candles, fills, all indicator panels). */
 const reportOverlay = computed(() => cachedCandles.value?.overlay ?? null);
 const showReportOverlay = ref(false);
+
+/**
+ * The plot config the chart draws: the user's, plus the strategy indicators a Nautilus
+ * bot recorded live (shipped with its candles by the dashboard gateway) when shown.
+ */
+const effectivePlotConfig = computed<PlotConfig>(() => {
+  const telemetry = dataset.value?.plot_config;
+  if (!settingsStore.showStrategyIndicators || !telemetry) return plotStore.plotConfig;
+  return {
+    ...plotStore.plotConfig,
+    main_plot: { ...telemetry.main_plot, ...plotStore.plotConfig.main_plot },
+    subplots: { ...telemetry.subplots, ...plotStore.plotConfig.subplots },
+  };
+});
 
 function refresh() {
   emit('refreshData', props.pair, plotStore.usedColumns);
@@ -248,7 +262,7 @@ watch(
           :bt-markers="btMarkers"
           :live-markers="liveMarkers"
           :indicator-lines="indicatorLines"
-          :plot-config="plotStore.plotConfig"
+          :plot-config="effectivePlotConfig"
           :heikin-ashi="settingsStore.useHeikinAshiCandles"
           :show-mark-area="settingsStore.showMarkArea"
           :use-u-t-c="settingsStore.timezone === 'UTC'"

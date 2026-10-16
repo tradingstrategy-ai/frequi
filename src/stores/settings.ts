@@ -26,6 +26,8 @@ export const useSettingsStore = defineStore(
     const useHeikinAshiCandles = ref(false);
     const showMarkArea = ref(true);
     const showBtTradeOverlay = ref(false);
+    /** Draw the indicator values a Nautilus bot's strategies recorded (gateway telemetry). */
+    const showStrategyIndicators = ref(true);
     const useReducedPairCalls = ref(true);
     const notifications = ref({ ...notificationDefaults });
     const profitDistributionBins = ref(20);
@@ -70,6 +72,7 @@ export const useSettingsStore = defineStore(
       useHeikinAshiCandles,
       showMarkArea,
       showBtTradeOverlay,
+      showStrategyIndicators,
       useReducedPairCalls,
       notifications,
       profitDistributionBins,

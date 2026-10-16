@@ -38,6 +38,8 @@ const dataset = computed((): PairHistory | undefined => {
   }
   return botStore.activeBot.candleData[`${firstpair}__${props.timeframe}`]?.data;
 });
+/** The bot recorded strategy indicators for this pair (Nautilus telemetry via the gateway). */
+const hasStrategyIndicators = computed(() => (dataset.value?.indicator_columns?.length ?? 0) > 0);
 
 const datasetColumns = computed(() =>
   dataset.value ? (dataset.value.all_columns ?? dataset.value.columns) : [],
@@ -184,6 +186,13 @@ const singlePairSelection = computed({
           </BaseCheckbox>
           <BaseCheckbox v-model="settingsStore.useHeikinAshiCandles">
             <span class="text-nowrap">Heikin Ashi</span>
+          </BaseCheckbox>
+          <BaseCheckbox
+            v-if="hasStrategyIndicators"
+            v-model="settingsStore.showStrategyIndicators"
+            title="Indicator values this bot's strategies recorded live, bar by bar"
+          >
+            <span class="text-nowrap">Strategy indicators</span>
           </BaseCheckbox>
           <BaseCheckbox
             v-if="comparisonStore.isSupportedBot(botStore.selectedBot)"
