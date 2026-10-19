@@ -181,6 +181,12 @@ watch(
   },
 );
 
+// A different strategy brings different indicators with the candles: fetch them again.
+watch(
+  () => botStore.activeBot.chartStrategy,
+  () => refresh(),
+);
+
 watch(
   () => settingsStore.multiPairSelection,
   () => {

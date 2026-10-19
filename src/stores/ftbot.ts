@@ -400,16 +400,21 @@ export function createBotSubStore(botId: string, botName: string) {
         try {
           let result: PairHistory | null = null;
           const settingsStore = useSettingsStore();
+          // The chart's strategy: the dashboard gateway adds that strategy's indicators to a
+          // Nautilus bot's candles. Freqtrade ignores the extra field.
+          const request = chartStrategy.value
+            ? { ...payload, strategy: chartStrategy.value }
+            : payload;
           if (botFeatures.value.reducedPairCalls && settingsStore.useReducedPairCalls) {
             // Modern approach, allowing filtering of columns
             const { data } = await api.post<PairCandlePayload, AxiosResponse<PairHistory>>(
               '/pair_candles',
-              payload,
+              request,
             );
             result = data;
           } else {
             const { data } = await api.get<PairHistory>('/pair_candles', {
-              params: { ...payload },
+              params: { ...request },
             });
             result = data;
           }

@@ -124,6 +124,15 @@ const indicatorLines = computed(() => cachedCandles.value?.indicators ?? []);
 const reportOverlay = computed(() => cachedCandles.value?.overlay ?? null);
 const showReportOverlay = ref(false);
 
+/** Where the selected strategy's indicators came from (Nautilus bots), shown above the chart. */
+const overlayNote = computed(() => {
+  const meta = dataset.value?.overlay_meta;
+  if (!meta || !settingsStore.showStrategyIndicators) return '';
+  if (meta.status !== 'OK')
+    return `${meta.strategy ?? 'Strategy'} indicators: ${meta.reason ?? meta.status}`;
+  return `${meta.strategy} indicators, ${meta.config_source}`;
+});
+
 /**
  * The plot config the chart draws: the user's, plus the strategy indicators a Nautilus
  * bot recorded live (shipped with its candles by the dashboard gateway) when shown.
@@ -276,6 +285,13 @@ watch(
         </div>
       </div>
       <div class="flex items-center gap-2">
+        <small
+          v-if="overlayNote"
+          class="text-xs text-surface-500"
+          data-testid="overlay-note"
+          title="Recomputed from venue candles with the bot's live parameters"
+          >{{ overlayNote }}</small
+        >
         {{ pair || 'Pair' }}
         <UButton
           v-if="reportOverlay"
