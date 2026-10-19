@@ -93,6 +93,10 @@ interface TradeBase {
   stoploss_last_update?: string;
   stoploss_last_update_timestamp?: number;
   initial_stop_loss_abs?: number;
+  /** Take-profit level resting at the venue (Nautilus bots; Freqtrade has none). */
+  take_profit_abs?: number;
+  /** Set by the dashboard gateway on Nautilus trades; absent on Freqtrade's own. */
+  nt_trade_id?: string;
   initial_stop_loss_ratio?: number;
   initial_stop_loss_pct?: number;
 

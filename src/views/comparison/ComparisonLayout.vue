@@ -92,8 +92,20 @@ function selectBot(botId: string) {
 
 function selectSleeve(sleeve: string) {
   comparisonStore.setSelectedSleeve(sleeve);
-  updateQuery({ sleeve: sleeve || undefined });
+  // A strategy picked here replaces any report chosen before.
+  updateQuery({ sleeve: sleeve || undefined, report: undefined });
 }
+
+/** Sentinel for "no strategy filter": a select item cannot have an empty value. */
+const ALL_STRATEGIES = '__all__';
+const strategyItems = computed(() => {
+  const bot = comparisonStore.activeComparisonBot;
+  const labels = new Map((bot?.sleeve_info ?? []).map((info) => [info.id, info.label]));
+  return [
+    { label: 'All strategies', value: ALL_STRATEGIES },
+    ...(bot?.sleeves ?? []).map((id) => ({ label: labels.get(id) ?? id, value: id })),
+  ];
+});
 
 /**
  * Fetch every Compare tab's code (and plotly.js, which report sections use) right away.
@@ -239,10 +251,12 @@ watch(
         />
         <USelect
           v-if="comparisonStore.activeComparisonBot?.sleeves.length"
-          :model-value="activeSleeve"
-          :items="['All sleeves', ...comparisonStore.activeComparisonBot.sleeves]"
-          class="min-w-40"
-          @update:model-value="selectSleeve($event === 'All sleeves' ? '' : $event)"
+          :model-value="activeSleeve || ALL_STRATEGIES"
+          :items="strategyItems"
+          class="min-w-52"
+          data-testid="strategy-selector"
+          aria-label="Strategy"
+          @update:model-value="selectSleeve($event === ALL_STRATEGIES ? '' : String($event))"
         />
         <UInput v-model="timerangeInput" class="min-w-[220px]" placeholder="YYYYMMDD-YYYYMMDD" />
         <UButton color="neutral" icon="mdi:calendar-range" @click="applyTimerange"

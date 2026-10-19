@@ -181,9 +181,19 @@ export interface ComparisonBotInfo {
   display_name: string;
   venue: string | null;
   sleeves: string[];
+  /** Sub-strategies of a fleet bot, as listed in `sleeves` (labels, and how live trades name them). */
+  sleeve_info?: SleeveInfo[];
   is_vault: boolean;
   last_sync?: string | null;
   report: DashboardReportMetadata;
+}
+
+export interface SleeveInfo {
+  id: string;
+  label: string;
+  /** Normalised spellings of the strategy (see `matchesSleeve`). */
+  match: string[];
+  wind_down: boolean;
 }
 
 export interface ComparisonBotsResponse {

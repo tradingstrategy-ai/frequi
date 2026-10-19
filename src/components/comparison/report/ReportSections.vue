@@ -14,6 +14,7 @@ import {
   useReportSections,
 } from '@/composables/reportSections';
 
+import { useComparisonStore } from '@/stores/comparisonStore';
 import ReportBlocks from './ReportBlocks.vue';
 
 const props = withDefaults(
@@ -25,6 +26,7 @@ const props = withDefaults(
   { heading: 'From the daily live-vs-backtest report' },
 );
 
+const comparisonStore = useComparisonStore();
 const { botId, data, chunks, loading, error, selectReport } = useReportSections(() => props.tab);
 
 interface ChunkGroup {
@@ -52,6 +54,10 @@ const grouped = computed(() => {
   return out;
 });
 
+/** The Compare header's strategy dropdown already chooses the report for bots that have one. */
+const hasStrategySelector = computed(
+  () => (comparisonStore.activeComparisonBot?.sleeves.length ?? 0) > 0,
+);
 const reportOptions = computed(() =>
   (data.value?.reports ?? []).map((r) => ({ value: r.key, label: r.title })),
 );
@@ -72,7 +78,7 @@ const withheld = computed(() =>
     >
       <h3 class="text-lg font-semibold me-auto text-start">{{ heading }}</h3>
       <USelect
-        v-if="reportOptions.length > 1"
+        v-if="reportOptions.length > 1 && !hasStrategySelector"
         :model-value="data?.report"
         :items="reportOptions"
         class="min-w-56"

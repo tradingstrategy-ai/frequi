@@ -220,6 +220,40 @@ function generateIndicatorSeries(line: ReportIndicatorLine, index: number): Line
   };
 }
 
+/** Colours of an open position's levels: entry, stop loss and take profit. */
+const POSITION_LEVEL_COLORS = { entry: '#94a3b8', stop: '#ef4444', target: '#22c55e' };
+
+/**
+ * An open position's entry, stop-loss and take-profit levels as horizontal lines running
+ * from its open to the last candle. Only levels the bot reports are drawn: a strategy
+ * that exits by market order on its own signals has no stop or target resting.
+ */
+function generatePositionLevelSeries(trade: Trade): LineSeriesOption[] {
+  const start = trade.open_timestamp;
+  const end = (props.dataset.data_stop_ts ?? start) + (props.dataset.timeframe_ms ?? 0);
+  const tag = trade.strategy ? `${trade.strategy.replace(/-\d+$/, '')} ` : '';
+  const levels: [string, number | undefined, string, 'solid' | 'dashed'][] = [
+    ['entry', trade.open_rate, POSITION_LEVEL_COLORS.entry, 'dashed'],
+    ['stop', trade.stop_loss_abs, POSITION_LEVEL_COLORS.stop, 'solid'],
+    ['take profit', trade.take_profit_abs, POSITION_LEVEL_COLORS.target, 'solid'],
+  ];
+  return levels
+    .filter(([, price]) => typeof price === 'number' && price > 0)
+    .map(([label, price, color, type]) => ({
+      name: `${tag}${label} ${price}`,
+      type: 'line',
+      xAxisIndex: 0,
+      yAxisIndex: 0,
+      showSymbol: false,
+      lineStyle: { width: 1.2, color, type },
+      itemStyle: { color },
+      data: [
+        [Math.max(start, props.dataset.data_start_ts ?? start), price as number],
+        [end, price as number],
+      ],
+    }));
+}
+
 /** Report live fills: hollow diamonds, so they read apart from FreqUI's own trade arrows. */
 function generateLiveMarkerSeries(markers: BtMarker[]): ScatterSeriesOption {
   return {
@@ -731,6 +765,14 @@ function updateChart(initial = false) {
       addLegend(line.name);
       (options.series as SeriesOption[]).push(generateIndicatorSeries(line, index));
     });
+    // Nautilus positions only: a Freqtrade bot's own stop is already part of its trade.
+    filteredTrades.value
+      .filter((trade) => trade.is_open && trade.nt_trade_id !== undefined)
+      .flatMap(generatePositionLevelSeries)
+      .forEach((series) => {
+        addLegend(String(series.name));
+        (options.series as SeriesOption[]).push(series);
+      });
   }
 
   // Merge this into original data

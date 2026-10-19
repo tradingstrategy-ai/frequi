@@ -68,6 +68,7 @@ import type { AxiosResponse } from 'axios';
 import axios from 'axios';
 
 import { evaluateFeatures } from '@/utils/features';
+import { normalizeStrategy } from '@/utils/strategies';
 
 export function createBotSubStore(botId: string, botName: string) {
   const loginInfo = useLoginInfo(botId);
@@ -93,6 +94,12 @@ export function createBotSubStore(botId: string, botName: string) {
     const detailTradeId = ref<number | null>(null);
     const selectedPair = ref('');
     const plotMultiPairs = ref<string[]>([]);
+    /**
+     * Strategy the Chart page shows (a normalised key, see `normalizeStrategy`); '' is every
+     * strategy. A multi-strategy bot trades one pair from several strategies, so the chart
+     * draws one strategy's fills and indicators at a time. Clicking a trade selects its own.
+     */
+    const chartStrategy = ref('');
 
     const historyTakesLonger = ref(false);
     const strategyList = ref<string[]>([]);
@@ -267,6 +274,9 @@ export function createBotSubStore(botId: string, botName: string) {
     function setDetailTrade(trade: Trade | null) {
       detailTradeId.value = trade?.trade_id || null;
       selectedPair.value = trade ? trade.pair : selectedPair.value;
+      if (trade?.strategy) {
+        chartStrategy.value = normalizeStrategy(trade.strategy);
+      }
     }
 
     async function getTrades() {
@@ -1441,6 +1451,7 @@ export function createBotSubStore(botId: string, botName: string) {
       detailTradeId,
       selectedPair,
       plotMultiPairs,
+      chartStrategy,
       candleData,
       candleDataStatus,
       history,

@@ -82,6 +82,8 @@ export interface ReportSourceInfo {
   key: string;
   title: string;
   bytes: number;
+  /** The strategy this report covers (a multi-strategy bundle), null for the portfolio report. */
+  strategy?: string | null;
 }
 
 export interface ReportSectionsResponse {
@@ -123,12 +125,17 @@ const api = axios.create({
   withCredentials: false,
 });
 
+/**
+ * @param report A listed report's key (wins when given).
+ * @param strategy A strategy of a multi-strategy bot: its own report is read.
+ */
 export async function fetchReportSections(
   botId: string,
   report?: string,
+  strategy?: string,
 ): Promise<ReportSectionsResponse> {
   const { data } = await api.get<ReportSectionsResponse>(`/${encodeURIComponent(botId)}/sections`, {
-    params: report ? { report } : {},
+    params: { ...(report ? { report } : {}), ...(strategy ? { strategy } : {}) },
   });
   return data;
 }
@@ -147,9 +154,10 @@ export async function fetchReportFigure(
 export async function fetchTradeMarkers(
   botId: string,
   pair: string,
+  strategy?: string,
 ): Promise<TradeMarkersResponse> {
   const { data } = await api.get<TradeMarkersResponse>(`/${encodeURIComponent(botId)}/markers`, {
-    params: { pair },
+    params: { pair, ...(strategy ? { strategy } : {}) },
   });
   return data;
 }
@@ -191,7 +199,11 @@ export function useReportSections(tab: () => ReportTab | undefined) {
   const requested = computed(() =>
     typeof route.query.report === 'string' ? route.query.report : '',
   );
-  const key = computed(() => `${botId.value}|${requested.value}`);
+  /** The strategy picked in the Compare header: its own report is shown. */
+  const strategy = computed(() =>
+    typeof route.query.sleeve === 'string' ? route.query.sleeve : comparisonStore.selectedSleeve,
+  );
+  const key = computed(() => `${botId.value}|${requested.value}|${strategy.value}`);
   const data = computed(() => cache.get(key.value));
   const chunks = computed(() => {
     const wanted = tab();
@@ -208,7 +220,11 @@ export function useReportSections(tab: () => ReportTab | undefined) {
     try {
       let pending = inflight.get(cacheKey);
       if (!pending) {
-        pending = fetchReportSections(bot, requested.value || undefined);
+        pending = fetchReportSections(
+          bot,
+          requested.value || undefined,
+          strategy.value || undefined,
+        );
         inflight.set(cacheKey, pending);
       }
       cache.set(cacheKey, await pending);

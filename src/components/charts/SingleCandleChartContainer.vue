@@ -3,6 +3,7 @@ import type { BtMarker, ChartSliderPosition, PairHistory, PlotConfig, Trade } fr
 import { LoadingStatus } from '@/types';
 import { useComparisonStore } from '@/stores/comparisonStore';
 import ReportFigure from '@/components/comparison/report/ReportFigure.vue';
+import { normalizeStrategy } from '@/utils/strategies';
 
 const props = withDefaults(
   defineProps<{
@@ -11,6 +12,8 @@ const props = withDefaults(
     timeframe: string;
     historicView?: boolean;
     pair?: string;
+    /** Strategy shown (a normalised key, see `normalizeStrategy`); '' shows every strategy. */
+    strategyKey?: string;
     sliderPosition?: ChartSliderPosition;
     isSinglePairView?: boolean;
   }>(),
@@ -18,6 +21,7 @@ const props = withDefaults(
     trades: () => [],
     historicView: false,
     pair: '',
+    strategyKey: '',
     sliderPosition: undefined,
     isSinglePairView: true,
   },
@@ -81,8 +85,12 @@ const btMarkers = computed<BtMarker[]>(() => {
     return [];
   }
   return (
-    comparisonStore.getCachedCandles(botStore.selectedBot, props.pair, props.timeframe)
-      ?.bt_markers ?? []
+    comparisonStore.getCachedCandles(
+      botStore.selectedBot,
+      props.pair,
+      props.timeframe,
+      props.strategyKey,
+    )?.bt_markers ?? []
   );
 });
 
@@ -91,14 +99,23 @@ const liveMarkers = computed<BtMarker[]>(() => {
     return [];
   }
   return (
-    comparisonStore.getCachedCandles(botStore.selectedBot, props.pair, props.timeframe)
-      ?.live_markers ?? []
+    comparisonStore.getCachedCandles(
+      botStore.selectedBot,
+      props.pair,
+      props.timeframe,
+      props.strategyKey,
+    )?.live_markers ?? []
   );
 });
 
 const cachedCandles = computed(() =>
   settingsStore.showBtTradeOverlay && comparisonCapable.value && props.pair
-    ? comparisonStore.getCachedCandles(botStore.selectedBot, props.pair, props.timeframe)
+    ? comparisonStore.getCachedCandles(
+        botStore.selectedBot,
+        props.pair,
+        props.timeframe,
+        props.strategyKey,
+      )
     : undefined,
 );
 /** The strategy's indicator lines from the report's overlay chart for this pair. */
@@ -114,12 +131,40 @@ const showReportOverlay = ref(false);
 const effectivePlotConfig = computed<PlotConfig>(() => {
   const telemetry = dataset.value?.plot_config;
   if (!settingsStore.showStrategyIndicators || !telemetry) return plotStore.plotConfig;
+  const mine = onlyStrategyColumns(telemetry);
   return {
     ...plotStore.plotConfig,
-    main_plot: { ...telemetry.main_plot, ...plotStore.plotConfig.main_plot },
-    subplots: { ...telemetry.subplots, ...plotStore.plotConfig.subplots },
+    main_plot: { ...mine.main_plot, ...plotStore.plotConfig.main_plot },
+    subplots: { ...mine.subplots, ...plotStore.plotConfig.subplots },
   };
 });
+
+/**
+ * The recorded indicators of the selected strategy only.
+ *
+ * With several strategies recording, the gateway names each column `<Strategy>.<indicator>`;
+ * the unprefixed columns of a single-strategy bot belong to every selection.
+ */
+function onlyStrategyColumns(config: PlotConfig): PlotConfig {
+  if (!props.strategyKey) return config;
+  const keep = (column: string) =>
+    !column.includes('.') || normalizeStrategy(column.split('.')[0]) === props.strategyKey;
+  const subplots = Object.fromEntries(
+    Object.entries(config.subplots ?? {})
+      .map(([title, plots]) => [
+        title,
+        Object.fromEntries(Object.entries(plots).filter(([column]) => keep(column))),
+      ])
+      .filter(([, plots]) => Object.keys(plots as object).length > 0),
+  );
+  return {
+    ...config,
+    main_plot: Object.fromEntries(
+      Object.entries(config.main_plot ?? {}).filter(([column]) => keep(column)),
+    ),
+    subplots,
+  };
+}
 
 function refresh() {
   emit('refreshData', props.pair, plotStore.usedColumns);
@@ -142,7 +187,13 @@ async function loadBtMarkers() {
   if (!settingsStore.showBtTradeOverlay || !comparisonCapable.value || !props.pair) {
     return;
   }
-  await comparisonStore.loadCandles(botStore.selectedBot, props.pair, props.timeframe);
+  await comparisonStore.loadCandles(
+    botStore.selectedBot,
+    props.pair,
+    props.timeframe,
+    false,
+    props.strategyKey,
+  );
 }
 
 watch(
@@ -178,7 +229,13 @@ watch(
 );
 
 watch(
-  () => [settingsStore.showBtTradeOverlay, props.pair, props.timeframe, botStore.selectedBot],
+  () => [
+    settingsStore.showBtTradeOverlay,
+    props.pair,
+    props.timeframe,
+    botStore.selectedBot,
+    props.strategyKey,
+  ],
   () => {
     loadBtMarkers().then();
   },

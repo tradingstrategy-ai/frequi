@@ -409,9 +409,19 @@ export const useComparisonStore = defineStore(
       );
     }
 
-    async function loadCandles(botId: string, pair: string, timeframeValue: string, force = false) {
+    /**
+     * @param sleeve Strategy whose own report supplies the markers and indicator lines. The
+     *   Chart page chooses it itself; by default it is the Compare page's selection.
+     */
+    async function loadCandles(
+      botId: string,
+      pair: string,
+      timeframeValue: string,
+      force = false,
+      sleeve = selectedSleeve.value,
+    ) {
       const requestId = ++pageRequestGeneration.candles;
-      const requestSelection = selectionKey(botId, selectedSleeve.value, timerange.value);
+      const requestSelection = selectionKey(botId, sleeve, timerange.value);
       const requestGeneration = selectionGeneration;
       activePage.value = 'candles';
       await ensureComparisonBots();
@@ -422,7 +432,7 @@ export const useComparisonStore = defineStore(
         return null;
       }
       const metadata = supportedBotMap.value[botId]!;
-      const key = `${cacheKey(botId, selectedSleeve.value, timerange.value, metadata.report.snapshot_id)}::${pair}::${timeframeValue}`;
+      const key = `${cacheKey(botId, sleeve, timerange.value, metadata.report.snapshot_id)}::${pair}::${timeframeValue}`;
       if (!force && candlesCache.value[key]) {
         const cached = candlesCache.value[key]!;
         candlesData.value = cached;
@@ -438,7 +448,7 @@ export const useComparisonStore = defineStore(
           pair,
           timeframeValue,
           timerange.value || undefined,
-          selectedSleeve.value || undefined,
+          sleeve || undefined,
         );
         const currentBot = supportedBotMap.value[botId];
         if (!requestIsCurrent('candles', requestId, requestGeneration) || !currentBot) return null;
@@ -450,7 +460,7 @@ export const useComparisonStore = defineStore(
           return null;
         }
         updateBotReport(botId, data.report);
-        const responseKey = `${cacheKey(botId, selectedSleeve.value, timerange.value, data.report.snapshot_id)}::${pair}::${timeframeValue}`;
+        const responseKey = `${cacheKey(botId, sleeve, timerange.value, data.report.snapshot_id)}::${pair}::${timeframeValue}`;
         candlesCache.value = { ...candlesCache.value, [responseKey]: data };
         candlesData.value = data;
         setActivePageReport('candles', requestSelection, data.report);
@@ -468,9 +478,14 @@ export const useComparisonStore = defineStore(
       }
     }
 
-    function getCachedCandles(botId: string, pair: string, timeframeValue: string) {
+    function getCachedCandles(
+      botId: string,
+      pair: string,
+      timeframeValue: string,
+      sleeve = selectedSleeve.value,
+    ) {
       const snapshotId = supportedBotMap.value[botId]?.report.snapshot_id ?? '';
-      const key = `${cacheKey(botId, selectedSleeve.value, timerange.value, snapshotId)}::${pair}::${timeframeValue}`;
+      const key = `${cacheKey(botId, sleeve, timerange.value, snapshotId)}::${pair}::${timeframeValue}`;
       return candlesCache.value[key] ?? null;
     }
 

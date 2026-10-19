@@ -83,6 +83,35 @@ describe('comparisonStore', () => {
     expect(restored.selectedSleeve).toBe('hedged');
   });
 
+  it('loads and caches chart markers per strategy, independent of the Compare page selection', async () => {
+    apiMocks.fetchComparisonBots.mockResolvedValue({ bots: [bot('snapshot-1')] });
+    apiMocks.fetchComparisonCandles.mockImplementation(
+      async (_bot: string, _pair: string, _tf: string, _range?: string, sleeve?: string) => ({
+        bt_markers: [{ price: sleeve === 'ichiv4short' ? 2 : 1 }],
+        live_markers: [],
+        report: report('snapshot-1'),
+      }),
+    );
+    const store = useTrackedComparisonStore();
+    await store.ensureComparisonBots();
+    store.setSelectedBot('derive-report');
+    store.setSelectedSleeve('core'); // the Compare page's choice must not leak into the chart
+
+    await store.loadCandles('derive-report', 'NEAR/USDC:USDC', '4h', false, 'ichiv4short');
+    await store.loadCandles('derive-report', 'NEAR/USDC:USDC', '4h', false, '');
+    await store.loadCandles('derive-report', 'NEAR/USDC:USDC', '4h', false, 'ichiv4short');
+    expect(apiMocks.fetchComparisonCandles.mock.calls.map((call) => call[4])).toEqual([
+      'ichiv4short',
+      undefined,
+    ]);
+    const price = (strategy: string) =>
+      store.getCachedCandles('derive-report', 'NEAR/USDC:USDC', '4h', strategy)?.bt_markers[0]?.price;
+    expect(price('ichiv4short')).toBe(2);
+    expect(price('')).toBe(1);
+    // Without an explicit strategy the Compare selection still applies.
+    expect(store.getCachedCandles('derive-report', 'NEAR/USDC:USDC', '4h')).toBeNull();
+  });
+
   it('shares an in-flight catalog request between layout and page mounting', async () => {
     let resolveCatalog!: (value: { bots: ReturnType<typeof bot>[] }) => void;
     apiMocks.fetchComparisonBots.mockReturnValue(new Promise((resolve) => {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ChartSliderPosition, PairHistory, Trade } from '@/types';
 import { useComparisonStore } from '@/stores/comparisonStore';
+import { matchesStrategy, normalizeStrategy } from '@/utils/strategies';
 
 const props = withDefaults(
   defineProps<{
@@ -53,6 +54,66 @@ function showConfigurator() {
 }
 
 const isSinglePairView = computed(() => botStore.activeBot.plotMultiPairs.length === 1);
+
+interface StrategyOption {
+  /** The normalised key the chart filters by; '' is every strategy. */
+  value: string;
+  label: string;
+  /** Every normalised spelling of this strategy (a report id, its class, a live strategy id). */
+  names: string[];
+}
+
+/** Sentinel for "every strategy": a select item cannot have an empty value. */
+const ALL_STRATEGIES = '__all__';
+
+/**
+ * Strategies the Chart page can show for this pair: the bot's own strategies (from its
+ * reports) plus any strategy that traded the pair without one.
+ */
+const strategyOptions = computed<StrategyOption[]>(() => {
+  const info = comparisonStore.supportedBots.find((b) => b.bot_id === botStore.selectedBot);
+  const options = new Map<string, StrategyOption>();
+  for (const sleeve of info?.sleeve_info ?? []) {
+    const value = normalizeStrategy(sleeve.id.replace('WIND_DOWN:', ''));
+    options.set(value, { value, label: sleeve.label, names: [...sleeve.match, value] });
+  }
+  const pair = botStore.activeBot.plotMultiPairs[0];
+  for (const trade of props.trades) {
+    if (trade.pair !== pair || !trade.strategy) continue;
+    const key = normalizeStrategy(trade.strategy);
+    const known = [...options.values()].find((o) => o.names.includes(key));
+    if (!known) {
+      options.set(key, { value: key, label: trade.strategy.replace(/-\d+$/, ''), names: [key] });
+    }
+  }
+  return [...options.values()];
+});
+const showStrategySelect = computed(
+  () => !botStore.activeBot.isWebserverMode && strategyOptions.value.length > 1,
+);
+const strategyItems = computed(() => [
+  { label: 'All strategies', value: ALL_STRATEGIES },
+  ...strategyOptions.value.map((o) => ({ label: o.label, value: o.value })),
+]);
+/** The selected strategy as an option's own key ('' for all, or when it no longer exists). */
+const selectedStrategy = computed(() => {
+  const chosen = botStore.activeBot.chartStrategy;
+  return strategyOptions.value.find((o) => o.names.includes(chosen))?.value ?? '';
+});
+const strategySelection = computed({
+  get: () => selectedStrategy.value || ALL_STRATEGIES,
+  set: (value: string) => {
+    botStore.activeBot.chartStrategy = value === ALL_STRATEGIES ? '' : value;
+  },
+});
+/** Live trades of the selected strategy; every trade when none is selected. */
+const chartTrades = computed(() => {
+  const names = strategyOptions.value.find((o) => o.value === selectedStrategy.value)?.names;
+  if (!selectedStrategy.value || !names) return props.trades;
+  return props.trades.filter((trade) =>
+    names.some((name) => matchesStrategy(trade.strategy, name)),
+  );
+});
 
 watch(
   () => botStore.activeBot.selectedPair,
@@ -169,6 +230,15 @@ const singlePairSelection = computed({
             virtualize
             @input="refresh"
           />
+          <USelect
+            v-if="showStrategySelect"
+            v-model="strategySelection"
+            :items="strategyItems"
+            class="md:w-56 w-full"
+            size="md"
+            data-testid="chart-strategy-selector"
+            title="Show one strategy's fills, indicators and report overlay"
+          />
           <UButton
             title="Refresh chart"
             color="neutral"
@@ -227,7 +297,8 @@ const singlePairSelection = computed({
           :pair="pair"
           :historic-view="botStore.activeBot.isWebserverMode"
           :timeframe="timeframe"
-          :trades="props.trades"
+          :trades="chartTrades"
+          :strategy-key="selectedStrategy"
           :slider-position="props.sliderPosition"
           :is-single-pair-view="isSinglePairView"
           @refresh-data="refresh()"
