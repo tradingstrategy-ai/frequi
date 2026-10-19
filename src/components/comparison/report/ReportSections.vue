@@ -56,7 +56,7 @@ const grouped = computed(() => {
 
 /** The Compare header's strategy dropdown already chooses the report for bots that have one. */
 const hasStrategySelector = computed(
-  () => (comparisonStore.activeComparisonBot?.sleeves.length ?? 0) > 0,
+  () => (comparisonStore.activeComparisonBot?.sleeves.length ?? 0) > 1,
 );
 const reportOptions = computed(() =>
   (data.value?.reports ?? []).map((r) => ({ value: r.key, label: r.title })),

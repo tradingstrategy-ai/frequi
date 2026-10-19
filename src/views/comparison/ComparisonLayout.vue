@@ -250,7 +250,7 @@ watch(
           @update:model-value="selectBot"
         />
         <USelect
-          v-if="comparisonStore.activeComparisonBot?.sleeves.length"
+          v-if="(comparisonStore.activeComparisonBot?.sleeves.length ?? 0) > 1"
           :model-value="activeSleeve || ALL_STRATEGIES"
           :items="strategyItems"
           class="min-w-52"
