@@ -220,13 +220,14 @@ function generateIndicatorSeries(line: ReportIndicatorLine, index: number): Line
   };
 }
 
-/** Colours of an open position's levels: entry, stop loss and take profit. */
-const POSITION_LEVEL_COLORS = { entry: '#94a3b8', stop: '#ef4444', target: '#22c55e' };
+/** Colours of an open position's levels: entry and take profit. */
+const POSITION_LEVEL_COLORS = { entry: '#94a3b8', target: '#22c55e' };
 
 /**
- * An open position's entry, stop-loss and take-profit levels as horizontal lines running
- * from its open to the last candle. Only levels the bot reports are drawn: a strategy
- * that exits by market order on its own signals has no stop or target resting.
+ * An open position's entry and take-profit levels as horizontal lines running from its open
+ * to the last candle, labelled with the strategy that holds it. The stop loss is not drawn
+ * here: FreqUI already marks an open trade's `stop_loss_abs`. A level is drawn only when the
+ * venue reports one resting.
  */
 function generatePositionLevelSeries(trade: Trade): LineSeriesOption[] {
   const start = trade.open_timestamp;
@@ -234,7 +235,6 @@ function generatePositionLevelSeries(trade: Trade): LineSeriesOption[] {
   const tag = trade.strategy ? `${trade.strategy.replace(/-\d+$/, '')} ` : '';
   const levels: [string, number | undefined, string, 'solid' | 'dashed'][] = [
     ['entry', trade.open_rate, POSITION_LEVEL_COLORS.entry, 'dashed'],
-    ['stop', trade.stop_loss_abs, POSITION_LEVEL_COLORS.stop, 'solid'],
     ['take profit', trade.take_profit_abs, POSITION_LEVEL_COLORS.target, 'solid'],
   ];
   return levels
