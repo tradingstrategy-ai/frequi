@@ -184,8 +184,33 @@ watch(
 // A different strategy brings different indicators with the candles: fetch them again.
 watch(
   () => botStore.activeBot.chartStrategy,
-  () => refresh(),
+  () => {
+    overlayRetries = 0;
+    refresh();
+  },
 );
+
+/** Delay between automatic refreshes while the gateway computes a strategy's indicators. */
+const OVERLAY_RETRY_MS = 8000;
+/** Most automatic refreshes for one pending evaluation (about a minute; a first one can take ~30 s). */
+const OVERLAY_MAX_RETRIES = 8;
+let overlayRetries = 0;
+let overlayTimer: ReturnType<typeof setTimeout> | undefined;
+
+// The candles arrive before a strategy's first evaluation finishes (status PENDING): fetch them
+// again until its indicators are there, so the user does not have to press refresh.
+watch(dataset, (current) => {
+  clearTimeout(overlayTimer);
+  if (current?.overlay_meta?.status !== 'PENDING') {
+    overlayRetries = 0;
+    return;
+  }
+  if (overlayRetries >= OVERLAY_MAX_RETRIES) return;
+  overlayRetries += 1;
+  overlayTimer = setTimeout(refresh, OVERLAY_RETRY_MS);
+});
+
+onBeforeUnmount(() => clearTimeout(overlayTimer));
 
 watch(
   () => settingsStore.multiPairSelection,
