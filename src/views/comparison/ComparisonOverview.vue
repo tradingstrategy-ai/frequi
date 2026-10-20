@@ -123,6 +123,7 @@ watch(
 
 <template>
   <div class="flex flex-col gap-4">
+    <VenueMtmCard :report="comparisonStore.report" />
     <div v-if="comparisonStore.loading.overview" class="flex flex-col gap-2 self-center">
       <UIcon name="mdi:loading" class="w-8 h-8 animate-spin" />
     </div>

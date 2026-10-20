@@ -10,7 +10,32 @@ export interface DashboardReportMetadata {
   source_artifacts: string[];
   unavailable_fields: string[];
   annotations: { code: string; note: string }[];
+  /**
+   * Fleet-report bots with registered versions: every deployed version, oldest first.
+   * The numbers default to the full live history since activation (`history_report`).
+   */
+  versions?: ReportVersion[];
+  /** Bundle path of the full-history report (every version, changes marked), if published. */
+  history_report?: string | null;
+  /** The report's account-level venue mark-to-market headline (Hyperliquid NT bots). */
+  venue_mtm?: VenueMtm | Record<string, never>;
 }
+
+/** One deployed version (composition period) of a deployment. */
+export interface ReportVersion {
+  id: string;
+  label: string;
+  available: boolean;
+  /** Bundle path of the version's own report, when published. */
+  report: string | null;
+  /** Live cannot be replayed for this version; entries are comparable, signals are not. */
+  not_replayable: boolean;
+}
+
+/** Venue mark-to-market headline, with values exactly as the report prints them. */
+export type VenueMtm =
+  | { status: 'ok'; cards: { label: string; value: string }[] }
+  | { status: 'unavailable'; reason: string };
 
 export interface MetricsResult {
   total_trades: number | null;
