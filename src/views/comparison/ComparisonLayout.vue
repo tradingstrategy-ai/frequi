@@ -2,6 +2,7 @@
 import { useComparison } from '@/composables/useComparison';
 import { REPORTS_AUTH_BOOTSTRAP_URL } from '@/utils/botAuthorization';
 import { loadPlotly } from '@/utils/plotlyLoader';
+import { reportCaveats, reportVerdicts, versionHistory } from '@/utils/reportVersions';
 
 const route = useRoute();
 const router = useRouter();
@@ -64,10 +65,17 @@ const reportWindowText = computed(() => {
   const window = comparisonStore.report?.report_window;
   return window ? `${window.start} to ${window.end}` : '';
 });
+const verdicts = computed(() => reportVerdicts(comparisonStore.report));
+const caveats = computed(() => reportCaveats(comparisonStore.report));
 const annotationText = computed(() =>
-  (comparisonStore.report?.annotations ?? [])
-    .map(({ code, note }) => `${code}: ${note}`)
-    .join(' · '),
+  caveats.value.map(({ code, note }) => `${code}: ${note}`).join(' · '),
+);
+const versions = computed(() => versionHistory(comparisonStore.report));
+/** The Report tab, opened on the full-history report (its changelog is at the top). */
+const fullHistoryLink = computed(() =>
+  versions.value?.historyReport
+    ? { path: '/compare/report', query: { ...route.query, file: versions.value.historyReport } }
+    : null,
 );
 
 function updateQuery(extra: Record<string, string | undefined>) {
@@ -313,7 +321,41 @@ watch(
       :description="comparisonStore.report.unavailable_fields.join(', ')"
     />
     <UAlert
-      v-if="comparisonStore.report?.annotations.length"
+      v-for="verdict in verdicts"
+      :key="verdict.code"
+      :color="verdict.color"
+      class="text-start"
+      :data-testid="`report-verdict-${verdict.code}`"
+      :title="verdict.title"
+      :description="verdict.note"
+    />
+    <UAlert
+      v-if="versions"
+      :color="versions.coversFullHistory ? 'info' : 'warning'"
+      class="text-start"
+      data-testid="report-version-history"
+      :title="
+        versions.coversFullHistory
+          ? `Full live history since activation · ${versions.versions.length} versions, each change marked`
+          : `Current version only · ${versions.versions.length} versions deployed`
+      "
+    >
+      <template #description>
+        <ol class="list-decimal ms-5">
+          <li v-for="version in versions.versions" :key="version.id">
+            {{ version.label }}
+            <template v-if="!version.available"> (report not published)</template>
+          </li>
+        </ol>
+      </template>
+      <template v-if="fullHistoryLink" #actions>
+        <RouterLink :to="fullHistoryLink" class="text-primary underline">
+          Full history report and changelog
+        </RouterLink>
+      </template>
+    </UAlert>
+    <UAlert
+      v-if="caveats.length"
       color="info"
       class="text-start"
       title="Report caveats"
