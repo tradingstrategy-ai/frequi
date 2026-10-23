@@ -233,7 +233,11 @@ export function createBotSubStore(botId: string, botName: string) {
           updates.push(getWhitelist());
           updates.push(getBlacklist());
           updates.push(getCurrentStrategy());
-          await Promise.all(updates);
+          // One slow or failing read (a 503 while the gateway is still fetching) must neither
+          // abort the others nor escape as an unhandled rejection from the unawaited callers.
+          const results = await Promise.allSettled(updates);
+          const failed = results.filter((r) => r.status === 'rejected').length;
+          if (failed) console.warn(`${botName}: ${failed} of ${results.length} reads failed`);
           refreshRequired.value = false;
         } finally {
           refreshing.value = false;
@@ -535,7 +539,11 @@ export function createBotSubStore(botId: string, botName: string) {
       }
     }
 
-    async function getStrategy(strategyName: string) {
+    /**
+     * @param notify Show a warning when the read fails (a background refresh passes false: a
+     * transient 503 from a slow bot is not something the user asked for).
+     */
+    async function getStrategy(strategyName: string, notify = true) {
       try {
         const { data } = await api.get<StrategyResult>(`/strategy/${strategyName}`, {});
         strategy.value = data;
@@ -545,7 +553,7 @@ export function createBotSubStore(botId: string, botName: string) {
         if (axios.isAxiosError(error)) {
           console.error(error.response);
           const errMsg = error.response?.data?.detail ?? 'Error fetching history';
-          showAlert(errMsg, 'warning');
+          if (notify) showAlert(errMsg, 'warning');
         }
         return Promise.reject(error);
       }
@@ -553,7 +561,7 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getCurrentStrategy() {
       if (botFeatures.value.strategyParameters && isTrading.value && botState.value?.strategy) {
-        return getStrategy(botState.value.strategy);
+        return getStrategy(botState.value.strategy, false);
       }
     }
 
