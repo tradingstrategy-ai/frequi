@@ -156,6 +156,7 @@ const VALUE_CLASSES: Record<string, string> = {
 
       <ReportFigure
         v-else-if="block.type === 'figure'"
+        :key="`${botId}|${report}|${block.id}`"
         :bot-id="botId"
         :report="report"
         :figure-id="block.id"
@@ -181,7 +182,7 @@ const VALUE_CLASSES: Record<string, string> = {
         <template v-if="shownLinks.has(index)">
           <ReportFigure
             v-for="linked in block.figures"
-            :key="linked.id"
+            :key="`${botId}|${report}|${linked.id}`"
             :bot-id="botId"
             :report="report"
             :figure-id="linked.id"
@@ -193,6 +194,7 @@ const VALUE_CLASSES: Record<string, string> = {
       </div>
 
       <RankerAdmission
+        :key="`${botId}|${report}|${index}`"
         v-else-if="block.type === 'ranker'"
         :title="block.title"
         :notes="block.notes"

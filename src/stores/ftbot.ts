@@ -69,6 +69,7 @@ import axios from 'axios';
 
 import { evaluateFeatures } from '@/utils/features';
 import { normalizeStrategy } from '@/utils/strategies';
+import { findRegistryBot } from '@/composables/dashboardRegistry';
 
 export function createBotSubStore(botId: string, botName: string) {
   const loginInfo = useLoginInfo(botId);
@@ -128,7 +129,11 @@ export function createBotSubStore(botId: string, botName: string) {
     const timeframe = computed(() => botState.value?.timeframe || '');
     /** Bot is behind the dashboard gateway's read-only guard (all NT bots; FT unless writes are on). */
     const isReadOnly = computed(
-      () => botState.value?.dashboard_read_only === true || botState.value?.engine === 'NT',
+      () =>
+        botState.value?.dashboard_read_only === true ||
+        botState.value?.engine === 'NT' ||
+        // Before its state loads, a dashboard-gateway bot is read-only (the gateway is).
+        (!botState.value && findRegistryBot(botId)?.read_only === true),
     );
 
     const openTradeCount = computed(() => openTrades.value.length);
@@ -406,9 +411,8 @@ export function createBotSubStore(botId: string, botName: string) {
           const settingsStore = useSettingsStore();
           // The chart's strategy: the dashboard gateway adds that strategy's indicators to a
           // Nautilus bot's candles. Freqtrade ignores the extra field.
-          const request = chartStrategy.value
-            ? { ...payload, strategy: chartStrategy.value }
-            : payload;
+          const requestedStrategy = chartStrategy.value;
+          const request = requestedStrategy ? { ...payload, strategy: requestedStrategy } : payload;
           if (botFeatures.value.reducedPairCalls && settingsStore.useReducedPairCalls) {
             // Modern approach, allowing filtering of columns
             const { data } = await api.post<PairCandlePayload, AxiosResponse<PairHistory>>(
@@ -421,6 +425,10 @@ export function createBotSubStore(botId: string, botName: string) {
               params: { ...request },
             });
             result = data;
+          }
+          if (requestedStrategy !== chartStrategy.value) {
+            // Answered for a strategy no longer selected; the newer request owns this pair's slot.
+            return;
           }
           if (result) {
             candleData.value = {

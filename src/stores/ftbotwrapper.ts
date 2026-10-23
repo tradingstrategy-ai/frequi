@@ -19,7 +19,7 @@ import type { ComputedRef, Ref } from 'vue';
 import { TimeSummaryOptions } from '@/types';
 import { createBotSubStore } from './ftbot';
 import { seedDemoPresetBots } from '@/composables/loginInfo';
-import { connectRegistryBots } from '@/composables/dashboardRegistry';
+import { connectRegistryBots, startsSelected } from '@/composables/dashboardRegistry';
 const AUTH_SELECTED_BOT = 'ftSelectedBot';
 
 // Import axios for type inference only
@@ -303,6 +303,8 @@ export const useBotStore = defineStore('ftbot-wrapper', (): BotStoreSetup => {
     }
     console.log('add bot', bot);
     const botStore = createBotSubStore(bot.botId, bot.botName);
+    // With dozens of dashboard bots only the remembered selection is polled at full rate.
+    botStore.isSelected = startsSelected(bot.botId, selectedBot.value);
     botStore.botAdded();
     botStores.value[bot.botId] = botStore;
     availableBots.value[bot.botId] = bot;

@@ -8,6 +8,7 @@ import type {
   TradesResponse,
 } from '@/types';
 import { onScopeDispose, type Ref, type ShallowRef } from 'vue';
+import { clearReportSections } from '@/composables/reportSections';
 import {
   fetchComparisonBots,
   fetchComparisonCandles,
@@ -181,6 +182,7 @@ export const useComparisonStore = defineStore(
       clearBotEntries(pairsCache);
       clearBotEntries(tradesCache);
       clearBotEntries(candlesCache);
+      clearReportSections(botId);
     }
 
     function updateBotReport(botId: string, nextReport: DashboardReportMetadata) {

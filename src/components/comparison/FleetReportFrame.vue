@@ -68,7 +68,11 @@ function selectFile(name: string) {
   router.replace({ path: route.path, query: { ...route.query, file: name } });
 }
 
+/** Increments per load: an answer for a bot no longer shown is dropped. */
+let generation = 0;
+
 async function load(slug: string) {
+  const mine = ++generation;
   listing.value = null;
   error.value = '';
   if (!slug) return;
@@ -77,14 +81,15 @@ async function load(slug: string) {
     const { data } = await axios.get<ReportListing>(`/api/reports/${encodeURIComponent(slug)}`, {
       withCredentials: true,
     });
-    listing.value = data;
+    if (mine === generation) listing.value = data;
   } catch (e) {
+    if (mine !== generation) return;
     error.value =
       axios.isAxiosError(e) && e.response?.status === 404
         ? 'This bot has no published live-vs-backtest report bundle yet.'
         : 'Could not load the report list.';
   } finally {
-    loading.value = false;
+    if (mine === generation) loading.value = false;
   }
 }
 

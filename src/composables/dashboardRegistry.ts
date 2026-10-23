@@ -93,15 +93,29 @@ let selectionPersisted = false;
  * on screen (or the selection remembered from the last visit); tick more in the "Bot
  * comparison" list. The selection is saved as it changes.
  */
-function applyRegistrySelection(ids: string[]) {
-  const botStore = useBotStore();
-  let saved: string[];
+/** The bots ticked on the last visit ([] when none was saved). */
+export function rememberedSelection(): string[] {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(SELECTION_KEY) ?? 'null');
-    saved = Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
   } catch {
-    saved = [];
+    return [];
   }
+}
+
+/**
+ * Whether a bot starts ticked when it is added (restored on a reload or connected): the
+ * selection remembered from the last visit plus the bot on screen. Without a remembered
+ * selection FreqUI's default (ticked) applies, as before the dashboard registry existed.
+ */
+export function startsSelected(botId: string, selectedBot: string): boolean {
+  const saved = rememberedSelection();
+  return saved.length === 0 || saved.includes(botId) || botId === selectedBot;
+}
+
+function applyRegistrySelection(ids: string[]) {
+  const botStore = useBotStore();
+  const saved = rememberedSelection();
   const wanted = new Set(saved.length > 0 ? saved : [botStore.selectedBot]);
   ids.forEach((id) => {
     const sub = botStore.botStores[id];
@@ -167,18 +181,24 @@ async function connectMissingBots(): Promise<string[]> {
           botUrl: bot.api_route,
           sortId: REGISTRY_SORT_BASE + index,
         });
+        // Polled in the background until the selection below is applied (dozens of bots).
+        const sub = botStore.botStores[botId];
+        if (sub) sub.isSelected = botId === botStore.selectedBot;
         added.push(botId);
       } catch (error) {
         console.error(`Could not connect ${bot.slug}`, error);
       }
     }
+    if (
+      added.length > 0 &&
+      (!botStore.selectedBot || !(botStore.selectedBot in botStore.availableBots))
+    ) {
+      botStore.selectFirstBot();
+    }
+    // Every page load, not only when a bot was added: after a reload all bots are restored
+    // from storage ticked, and nothing would untick them (all 32 polled at full rate).
+    applyRegistrySelection(loaded.bots.map(registryBotId).filter((id) => id in botStore.botStores));
     if (added.length > 0) {
-      if (!botStore.selectedBot || !(botStore.selectedBot in botStore.availableBots)) {
-        botStore.selectFirstBot();
-      }
-      applyRegistrySelection(
-        loaded.bots.map(registryBotId).filter((id) => id in botStore.botStores),
-      );
       botStore.allRefreshFull();
     }
   } finally {

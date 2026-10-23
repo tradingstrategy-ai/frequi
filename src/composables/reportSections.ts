@@ -186,8 +186,31 @@ export const REPORT_TAB_LABELS: Record<ReportTab, string> = {
   trades: 'Trade Detail',
 };
 
-/** Loaded reports, keyed by `<bot>|<report key>`; shared by every tab. */
-const cache = reactive(new Map<string, ReportSectionsResponse>());
+/** Most loaded reports kept. Why: each is large; browsing many bots would grow memory unbounded. */
+const SECTIONS_CACHE_SIZE = 24;
+
+/**
+ * Loaded reports, keyed by `<bot>|<report key>|<strategy>`; shared by every tab. Entries are
+ * stored raw (not deeply reactive) and the oldest are dropped beyond the bound.
+ */
+const cache = shallowReactive(new Map<string, ReportSectionsResponse>());
+
+function remember(key: string, value: ReportSectionsResponse) {
+  cache.delete(key);
+  cache.set(key, markRaw(value));
+  while (cache.size > SECTIONS_CACHE_SIZE) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
+
+/** Forget a bot's loaded reports (a new daily report was published). */
+export function clearReportSections(botId: string) {
+  for (const key of [...cache.keys()]) {
+    if (key.startsWith(`${botId}|`)) cache.delete(key);
+  }
+}
 const inflight = new Map<string, Promise<ReportSectionsResponse>>();
 
 /**
@@ -235,7 +258,7 @@ export function useReportSections(tab: () => ReportTab | undefined) {
         );
         inflight.set(cacheKey, pending);
       }
-      cache.set(cacheKey, await pending);
+      remember(cacheKey, await pending);
     } catch (e) {
       error.value = axios.isAxiosError(e)
         ? `Could not load the report sections (${e.response?.status ?? e.message}).`

@@ -25,19 +25,37 @@ function useTrackedComparisonStore() {
 }
 
 const report = (snapshot_id: string, status = 'READY') => ({
-  schema_version: '1', snapshot_id, status, reason: null, generated_at: '2026-09-29T12:00:00Z',
-  report_date: '2026-09-29', report_window: { start: '2026-09-01', end: '2026-09-29' },
-  stale: false, source_artifacts: [], unavailable_fields: [], annotations: [],
+  schema_version: '1',
+  snapshot_id,
+  status,
+  reason: null,
+  generated_at: '2026-09-29T12:00:00Z',
+  report_date: '2026-09-29',
+  report_window: { start: '2026-09-01', end: '2026-09-29' },
+  stale: false,
+  source_artifacts: [],
+  unavailable_fields: [],
+  annotations: [],
 });
 
 const bot = (snapshotId: string, status = 'READY') => ({
-  bot_id: 'derive-report', bot_type: 'NT' as const, display_name: 'Derive report',
-  venue: 'Derive', sleeves: ['core', 'hedged'], is_vault: false, report: report(snapshotId, status),
+  bot_id: 'derive-report',
+  bot_type: 'NT' as const,
+  display_name: 'Derive report',
+  venue: 'Derive',
+  sleeves: ['core', 'hedged'],
+  is_vault: false,
+  report: report(snapshotId, status),
 });
 
 const overview = (snapshotId: string) => ({
-  live_metrics: {}, bt_metrics: {}, equity_curve: { live: [], bt: [] },
-  match_summary: {}, daily_profit: [], monthly_heatmap: [], report: report(snapshotId),
+  live_metrics: {},
+  bt_metrics: {},
+  equity_curve: { live: [], bt: [] },
+  match_summary: {},
+  daily_profit: [],
+  monthly_heatmap: [],
+  report: report(snapshotId),
 });
 
 function setupPinia() {
@@ -105,7 +123,8 @@ describe('comparisonStore', () => {
       undefined,
     ]);
     const price = (strategy: string) =>
-      store.getCachedCandles('derive-report', 'NEAR/USDC:USDC', '4h', strategy)?.bt_markers[0]?.price;
+      store.getCachedCandles('derive-report', 'NEAR/USDC:USDC', '4h', strategy)?.bt_markers[0]
+        ?.price;
     expect(price('ichiv4short')).toBe(2);
     expect(price('')).toBe(1);
     // Without an explicit strategy the Compare selection still applies.
@@ -114,9 +133,11 @@ describe('comparisonStore', () => {
 
   it('shares an in-flight catalog request between layout and page mounting', async () => {
     let resolveCatalog!: (value: { bots: ReturnType<typeof bot>[] }) => void;
-    apiMocks.fetchComparisonBots.mockReturnValue(new Promise((resolve) => {
-      resolveCatalog = resolve;
-    }));
+    apiMocks.fetchComparisonBots.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCatalog = resolve;
+      }),
+    );
     const store = useTrackedComparisonStore();
 
     const layoutLoad = store.ensureComparisonBots();
@@ -134,7 +155,8 @@ describe('comparisonStore', () => {
     let current = bot('valid-1');
     apiMocks.fetchComparisonBots.mockImplementation(async () => ({ bots: [current] }));
     apiMocks.fetchOverview.mockImplementation(async () => ({
-      ...overview(current.report.snapshot_id), report: current.report,
+      ...overview(current.report.snapshot_id),
+      report: current.report,
     }));
 
     const store = useTrackedComparisonStore();
@@ -145,7 +167,9 @@ describe('comparisonStore', () => {
     await store.loadOverview('derive-report', '20260101-20260413');
     expect(apiMocks.fetchOverview).toHaveBeenCalledTimes(1);
     expect(apiMocks.fetchOverview).toHaveBeenLastCalledWith(
-      'derive-report', '20260101-20260413', 'hedged',
+      'derive-report',
+      '20260101-20260413',
+      'hedged',
     );
 
     // A marker-only/incomplete publication can advance snapshot_id without a new
@@ -159,19 +183,23 @@ describe('comparisonStore', () => {
       await store.ensureComparisonBots(true);
       expect(store.report?.snapshot_id).toBe(snapshotId);
       expect(await store.loadOverview('derive-report', '20260101-20260413')).not.toBeNull();
-      expect(apiMocks.fetchOverview).toHaveBeenCalledTimes(2 + [
-        'incomplete-2', 'markers-only-3', 'markers-only-4',
-      ].indexOf(snapshotId));
+      expect(apiMocks.fetchOverview).toHaveBeenCalledTimes(
+        2 + ['incomplete-2', 'markers-only-3', 'markers-only-4'].indexOf(snapshotId),
+      );
     }
   });
 
   it('retains per-bot and timerange caching for supported report entries', async () => {
-    apiMocks.fetchComparisonBots.mockResolvedValue({ bots: [
-      bot('derive-v1'),
-      { ...bot('apex-v1'), bot_id: 'apex-report', display_name: 'Apex report' },
-    ] });
-    apiMocks.fetchOverview.mockImplementation(async (botId: string, range?: string) =>
-      ({ ...overview(`${botId}-${range}`), match_summary: { matched: range === 'range-a' ? 1 : 2 } }));
+    apiMocks.fetchComparisonBots.mockResolvedValue({
+      bots: [
+        bot('derive-v1'),
+        { ...bot('apex-v1'), bot_id: 'apex-report', display_name: 'Apex report' },
+      ],
+    });
+    apiMocks.fetchOverview.mockImplementation(async (botId: string, range?: string) => ({
+      ...overview(`${botId}-${range}`),
+      match_summary: { matched: range === 'range-a' ? 1 : 2 },
+    }));
     const store = useTrackedComparisonStore();
     await store.ensureComparisonBots();
 
@@ -197,9 +225,13 @@ describe('comparisonStore', () => {
 
   it('revalidates report metadata when forced and propagates page annotations and snapshot metadata', async () => {
     apiMocks.fetchComparisonBots.mockResolvedValue({ bots: [bot('snapshot-1')] });
-    apiMocks.fetchOverview.mockResolvedValue({ ...overview('snapshot-1'), report: {
-      ...report('snapshot-1'), annotations: [{ code: 'partial_coverage', note: 'Partial source coverage' }],
-    } });
+    apiMocks.fetchOverview.mockResolvedValue({
+      ...overview('snapshot-1'),
+      report: {
+        ...report('snapshot-1'),
+        annotations: [{ code: 'partial_coverage', note: 'Partial source coverage' }],
+      },
+    });
     const store = useTrackedComparisonStore();
     await store.ensureComparisonBots();
     store.setSelectedBot('derive-report');
@@ -222,8 +254,18 @@ describe('comparisonStore', () => {
     let resolveA!: (value: ReturnType<typeof overview>) => void;
     let resolveB!: (value: ReturnType<typeof overview>) => void;
     apiMocks.fetchOverview
-      .mockImplementationOnce(() => new Promise((resolve) => { resolveA = resolve; }))
-      .mockImplementationOnce(() => new Promise((resolve) => { resolveB = resolve; }));
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveA = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveB = resolve;
+          }),
+      );
 
     const store = useTrackedComparisonStore();
     await store.ensureComparisonBots();
@@ -246,13 +288,27 @@ describe('comparisonStore', () => {
 
   it('does not display a late response after the user changes report selection', async () => {
     const selectedBot = { ...bot('derive-snapshot'), bot_id: 'derive-report' };
-    const otherBot = { ...bot('apex-snapshot'), bot_id: 'apex-report', display_name: 'Apex report' };
+    const otherBot = {
+      ...bot('apex-snapshot'),
+      bot_id: 'apex-report',
+      display_name: 'Apex report',
+    };
     apiMocks.fetchComparisonBots.mockResolvedValue({ bots: [selectedBot, otherBot] });
     let resolveDerive!: (value: ReturnType<typeof overview>) => void;
     let resolveApex!: (value: ReturnType<typeof overview>) => void;
     apiMocks.fetchOverview
-      .mockImplementationOnce(() => new Promise((resolve) => { resolveDerive = resolve; }))
-      .mockImplementationOnce(() => new Promise((resolve) => { resolveApex = resolve; }));
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveDerive = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveApex = resolve;
+          }),
+      );
 
     const store = useTrackedComparisonStore();
     await store.ensureComparisonBots();
@@ -275,18 +331,25 @@ describe('comparisonStore', () => {
   it('restores cached page caveats for the selected sleeve without changing catalog metadata', async () => {
     const portfolio = {
       ...bot('snapshot-1'),
-      report: { ...report('snapshot-1'), annotations: [{ code: 'PORTFOLIO', note: 'Portfolio caveat' }] },
+      report: {
+        ...report('snapshot-1'),
+        annotations: [{ code: 'PORTFOLIO', note: 'Portfolio caveat' }],
+      },
     };
     apiMocks.fetchComparisonBots.mockResolvedValue({ bots: [portfolio] });
-    apiMocks.fetchOverview.mockImplementation(async (_botId: string, _range?: string, sleeve?: string) => {
-      const isCore = sleeve === 'core';
-      const childReport = {
-        ...report('snapshot-1'),
-        annotations: [{ code: isCore ? 'CORE' : 'HEDGED', note: isCore ? 'Core caveat' : 'Hedged caveat' }],
-        unavailable_fields: [isCore ? 'live_metrics.sharpe_ratio' : 'equity_curve'],
-      };
-      return { ...overview('snapshot-1'), report: childReport };
-    });
+    apiMocks.fetchOverview.mockImplementation(
+      async (_botId: string, _range?: string, sleeve?: string) => {
+        const isCore = sleeve === 'core';
+        const childReport = {
+          ...report('snapshot-1'),
+          annotations: [
+            { code: isCore ? 'CORE' : 'HEDGED', note: isCore ? 'Core caveat' : 'Hedged caveat' },
+          ],
+          unavailable_fields: [isCore ? 'live_metrics.sharpe_ratio' : 'equity_curve'],
+        };
+        return { ...overview('snapshot-1'), report: childReport };
+      },
+    );
 
     const store = useTrackedComparisonStore();
     await store.ensureComparisonBots();

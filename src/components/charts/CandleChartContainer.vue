@@ -100,6 +100,13 @@ const selectedStrategy = computed(() => {
   const chosen = botStore.activeBot.chartStrategy;
   return strategyOptions.value.find((o) => o.names.includes(chosen))?.value ?? '';
 });
+// A strategy picked on another pair that this pair does not have would still be sent with the
+// candle request while the chart filters by "all": clear it so both agree.
+watch(selectedStrategy, (value) => {
+  if (!value && botStore.activeBot.chartStrategy && strategyOptions.value.length > 0) {
+    botStore.activeBot.chartStrategy = '';
+  }
+});
 const strategySelection = computed({
   get: () => selectedStrategy.value || ALL_STRATEGIES,
   set: (value: string) => {

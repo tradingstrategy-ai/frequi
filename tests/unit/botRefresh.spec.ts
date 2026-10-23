@@ -35,3 +35,21 @@ describe('refreshSlow', () => {
     expect(api.get).toHaveBeenCalledWith('/trades', expect.anything());
   });
 });
+
+describe('getPairCandles', () => {
+  it('drops an answer for a strategy that is no longer selected', async () => {
+    const pinia = createPinia();
+    pinia.use(piniaPluginPersistedstate);
+    createApp({}).use(pinia);
+    setActivePinia(pinia);
+    let release: (value: unknown) => void = () => {};
+    api.get.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)) as never);
+    const bot = createBotSubStore('chart-bot', 'Chart bot');
+    bot.chartStrategy = 'StrategyA';
+    const pending = bot.getPairCandles({ pair: 'BTC', timeframe: '1h', columns: [] });
+    bot.chartStrategy = 'StrategyB';
+    release({ data: { columns: [], data: [[1]] } });
+    await pending;
+    expect(bot.candleData['BTC__1h']).toBeUndefined();
+  });
+});

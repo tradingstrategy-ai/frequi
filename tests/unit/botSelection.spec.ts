@@ -52,3 +52,20 @@ describe('selectFirstBot', () => {
     expect(bots.selectedBot).toBe('first-bot');
   });
 });
+
+describe('startsSelected', () => {
+  beforeEach(() => localStorage.removeItem('ftDashboardSelectedBots'));
+
+  it('keeps FreqUI default (ticked) when no selection was ever saved', async () => {
+    const { startsSelected } = await import('@/composables/dashboardRegistry');
+    expect(startsSelected('any-bot', 'other')).toBe(true);
+  });
+
+  it('restores only the remembered bots and the one on screen after a reload', async () => {
+    const { startsSelected } = await import('@/composables/dashboardRegistry');
+    localStorage.setItem('ftDashboardSelectedBots', JSON.stringify(['first-bot']));
+    expect(startsSelected('first-bot', 'x')).toBe(true);
+    expect(startsSelected('second-bot', 'second-bot')).toBe(true);
+    expect(startsSelected('third-bot', 'first-bot')).toBe(false);
+  });
+});

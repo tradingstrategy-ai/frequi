@@ -24,10 +24,12 @@ describe('comparisonApi', () => {
   it('uses a same-origin comparison API client without cross-origin credentials', async () => {
     // The module creates one client at import time; assert the configured origin
     // and credentials rather than depending on an absolute deployment URL.
-    expect(axiosMock.create).toHaveBeenCalledWith(expect.objectContaining({
-      baseURL: '/api/comparison',
-      withCredentials: false,
-    }));
+    expect(axiosMock.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseURL: '/api/comparison',
+        withCredentials: false,
+      }),
+    );
     await fetchComparisonBots();
     expect(axiosMock.get).toHaveBeenCalledWith('/bots');
   });
@@ -53,7 +55,10 @@ describe('comparisonApi', () => {
     });
     expect(axiosMock.get).toHaveBeenNthCalledWith(5, '/derive-report/candles', {
       params: {
-        pair: 'BTC/USDT', timeframe: '1h', timerange: '20260901-20260929', sleeve: 'hedged',
+        pair: 'BTC/USDT',
+        timeframe: '1h',
+        timerange: '20260901-20260929',
+        sleeve: 'hedged',
       },
     });
   });
