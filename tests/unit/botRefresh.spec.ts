@@ -9,7 +9,12 @@ vi.mock('@/composables/useToast', () => ({ useToast: () => ({ add: vi.fn() }) })
 const api = vi.hoisted(() => ({
   get: vi.fn((url: string) => {
     if (url === '/balance') {
-      return Promise.reject(Object.assign(new Error('Request failed with status code 503'), { isAxiosError: true, response: { status: 503 } }));
+      return Promise.reject(
+        Object.assign(new Error('Request failed with status code 503'), {
+          isAxiosError: true,
+          response: { status: 503 },
+        }),
+      );
     }
     return Promise.resolve({ data: url === '/whitelist' ? { whitelist: [] } : [] });
   }),
