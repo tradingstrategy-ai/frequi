@@ -181,17 +181,24 @@ async function chartForBot(browser, bot, sleeves) {
   for (const id of picks) {
     const trade = open.find((t) => String(t.trade_id) === id);
     await page.locator('tbody tr').filter({ hasText: `${id} |` }).first().click();
+    // The note must name this trade's own strategy (a stale note from the previous trade on the
+    // same pair must not pass); live ids pinned to an older class name are aliased.
+    const ALIASES = { sigcomboexp47: 'a4fullgatecap05h' };
+    const expected = trade?.strategy ? normalize(trade.strategy) : '';
+    const wanted = ALIASES[expected] ?? expected;
     const start = Date.now();
     let note = '';
     while ((Date.now() - start) / 1000 < OVERLAY_LIMIT_S) {
       note = (await page.locator('[data-testid="overlay-note"]').first().innerText().catch(() => '')).trim();
-      if (/config|recorded live/.test(note)) break;
+      const forThisTrade = !wanted || normalize(note.split(' indicators')[0]) === wanted;
+      if (/config|recorded live/.test(note) && forThisTrade) break;
       await page.waitForTimeout(1000);
     }
     const seconds = (Date.now() - start) / 1000;
     const chosen = (await page.locator('[data-testid="chart-strategy-selector"]').first().innerText().catch(() => '')).trim();
     let expectation = '';
     if (!/config|recorded live/.test(note)) expectation = `no indicators (${note || 'no note'})`;
+    else if (wanted && normalize(note.split(' indicators')[0]) !== wanted) expectation = `indicators of another strategy (${note}) for a ${trade.strategy} trade`;
     if (/defaults/.test(note)) expectation = `default parameters (${note})`;
     if (trade && sleeves.length > 1) {
       const sleeve = sleeves.find((s) => s.match.some((m) => normalize(trade.strategy) === m || normalize(trade.strategy).startsWith(m)));
