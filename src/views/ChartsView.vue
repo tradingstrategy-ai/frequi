@@ -40,6 +40,9 @@ onMounted(() => {
 });
 
 function refreshOHLCV(pair: string, columns: string[]) {
+  // The chart asks before the bot's config (timeframe) or a pair is known; it asks again once
+  // they are, so skip instead of letting the store reject an unanswerable request.
+  if (!pair || !finalTimeframe.value) return;
   console.log('Refreshing OHLCV for pair:', pair, finalTimeframe.value, 'with columns:', columns);
   if (botStore.activeBot.isWebserverMode && finalTimeframe.value) {
     const payload: PairHistoryPayload = {

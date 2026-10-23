@@ -181,6 +181,14 @@ watch(
   },
 );
 
+// The Chart page knows the bot's timeframe only once its config has loaded: fetch then.
+watch(
+  () => props.timeframe,
+  (timeframe, previous) => {
+    if (timeframe && timeframe !== previous) refresh();
+  },
+);
+
 // A different strategy brings different indicators with the candles: fetch them again.
 watch(
   () => botStore.activeBot.chartStrategy,
