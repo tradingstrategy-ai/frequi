@@ -40,9 +40,12 @@ export async function fetchOverview(
   timerange?: string,
   sleeve?: string,
 ): Promise<OverviewResponse> {
-  const { data } = await comparisonApi.get<OverviewResponse>(`/${encodeURIComponent(botId)}/overview`, {
-    params: comparisonParams(timerange, sleeve),
-  });
+  const { data } = await comparisonApi.get<OverviewResponse>(
+    `/${encodeURIComponent(botId)}/overview`,
+    {
+      params: comparisonParams(timerange, sleeve),
+    },
+  );
   return data;
 }
 
@@ -51,9 +54,12 @@ export async function fetchTimeline(
   timerange?: string,
   sleeve?: string,
 ): Promise<TimelineResponse> {
-  const { data } = await comparisonApi.get<TimelineResponse>(`/${encodeURIComponent(botId)}/timeline`, {
-    params: comparisonParams(timerange, sleeve),
-  });
+  const { data } = await comparisonApi.get<TimelineResponse>(
+    `/${encodeURIComponent(botId)}/timeline`,
+    {
+      params: comparisonParams(timerange, sleeve),
+    },
+  );
   return data;
 }
 
@@ -86,12 +92,15 @@ export async function fetchComparisonCandles(
   timerange?: string,
   sleeve?: string,
 ): Promise<CandlesResponse> {
-  const { data } = await comparisonApi.get<CandlesResponse>(`/${encodeURIComponent(botId)}/candles`, {
-    params: {
-      pair,
-      timeframe,
-      ...comparisonParams(timerange, sleeve),
+  const { data } = await comparisonApi.get<CandlesResponse>(
+    `/${encodeURIComponent(botId)}/candles`,
+    {
+      params: {
+        pair,
+        timeframe,
+        ...comparisonParams(timerange, sleeve),
+      },
     },
-  });
+  );
   return data;
 }
