@@ -434,9 +434,9 @@ export function createBotSubStore(botId: string, botName: string) {
           candleDataStatus.value = LoadingStatus.error;
         }
       } else {
-        const error = 'pair or timeframe not specified';
-        console.error(error);
-        return Promise.reject(error);
+        // Asked before the bot's config (timeframe) or a pair is known: nothing to fetch yet,
+        // and the caller asks again once they are. Rejecting left an unhandled rejection.
+        console.warn('pair or timeframe not specified', payload);
       }
     }
 

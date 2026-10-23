@@ -86,7 +86,9 @@ async function settle(page, limitS = SETTLE_LIMIT_S) {
           const r = el.getBoundingClientRect();
           return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight;
         };
-        return [...document.querySelectorAll('.animate-spin')].filter(onScreen).length;
+        // The first visit shows "Dashboard gateway: N of 32 bots connected" while it logs in.
+        const connecting = /Dashboard gateway: \d+ of \d+ bots connected/.test(document.body.innerText);
+        return [...document.querySelectorAll('.animate-spin')].filter(onScreen).length + (connecting ? 1 : 0);
       })
       .catch(() => 0);
     if (!busy) return { seconds: (Date.now() - start) / 1000, stuck: false };
