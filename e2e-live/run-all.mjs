@@ -18,8 +18,8 @@ mkdirSync(OUT, { recursive: true });
 
 /** Seconds a page may stay busy (an on-screen spinner) before it counts as stuck. */
 const SETTLE_LIMIT_S = 45;
-/** Seconds a strategy's chart indicators may take on a cold cache (the chart refreshes itself). */
-const OVERLAY_LIMIT_S = 80;
+/** Seconds a strategy's chart indicators may take on a cold cache: the chart refreshes itself for ~3 min. */
+const OVERLAY_LIMIT_S = 190;
 /** Closed trades clicked per NT bot on the Chart, beside every open one. */
 const CLOSED_PER_BOT = 3;
 /** Pages visited per bot. */
