@@ -5,6 +5,22 @@ import piniaPluginPersistedstate from 'pinia-plugin-persistedstate';
 
 vi.mock('@/composables/useToast', () => ({ useToast: () => ({ add: vi.fn() }) }));
 
+// The login store reads its storage when its module loads, so the bots' logins are seeded first.
+vi.hoisted(() => {
+  const login = (botId: string, sortId: number) => ({
+    botName: botId,
+    apiUrl: `http://localhost/api/bots/${botId}`,
+    accessToken: 'a',
+    refreshToken: 'r',
+    autoRefresh: false,
+    sortId,
+  });
+  localStorage.setItem(
+    'ftAuthLoginInfo',
+    JSON.stringify({ 'first-bot': login('first-bot', 0), 'second-bot': login('second-bot', 1) }),
+  );
+});
+
 import { useBotStore } from '@/stores/ftbotwrapper';
 
 function store() {
@@ -20,7 +36,7 @@ function store() {
 }
 
 describe('selectFirstBot', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => localStorage.removeItem('ftSelectedBot'));
 
   it('restores the remembered bot', () => {
     localStorage.setItem('ftSelectedBot', 'second-bot');
