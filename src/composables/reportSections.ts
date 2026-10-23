@@ -102,6 +102,14 @@ export interface PlotlyFigureJson {
   layout: Record<string, unknown>;
 }
 
+/**
+ * Whether a report figure has nothing to draw (no traces), as a strategy that never traded in
+ * the window gets. Plotly would still draw bare axes and log an SVG error for their title.
+ */
+export function isEmptyFigure(figure: PlotlyFigureJson): boolean {
+  return !Array.isArray(figure.data) || figure.data.length === 0;
+}
+
 export interface TradeMarker {
   side: 'bt' | 'live';
   kind: 'entry' | 'exit';

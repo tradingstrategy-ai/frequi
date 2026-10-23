@@ -7,7 +7,11 @@
  * Charts above {@link AUTO_LOAD_LIMIT_BYTES} wait for a click: plotting tens of MB of
  * candles blocks the page for seconds.
  */
-import { fetchReportFigure, type PlotlyFigureJson } from '@/composables/reportSections';
+import {
+  fetchReportFigure,
+  isEmptyFigure,
+  type PlotlyFigureJson,
+} from '@/composables/reportSections';
 import { loadPlotly } from '@/utils/plotlyLoader';
 
 const props = defineProps<{
@@ -24,7 +28,7 @@ const AUTO_LOAD_LIMIT_BYTES = 8 * 1024 * 1024;
 
 const target = ref<HTMLDivElement>();
 const wrapper = ref<HTMLDivElement>();
-const state = ref<'idle' | 'loading' | 'ready' | 'error'>('idle');
+const state = ref<'idle' | 'loading' | 'ready' | 'empty' | 'error'>('idle');
 const error = ref('');
 const confirmed = ref((props.bytes ?? 0) <= AUTO_LOAD_LIMIT_BYTES);
 const visible = ref(false);
@@ -54,6 +58,10 @@ async function draw() {
       loadPlotly(),
       fetchReportFigure(props.botId, props.report, props.figureId),
     ]);
+    if (isEmptyFigure(figure)) {
+      state.value = 'empty';
+      return;
+    }
     if (typeof figure.layout.height === 'number') layoutHeight.value = figure.layout.height;
     await nextTick();
     if (!target.value) return;
@@ -101,6 +109,13 @@ onBeforeUnmount(() => {
         This chart carries {{ sizeLabel }} of data and can take a few seconds to draw.
       </div>
       <UButton size="sm" icon="mdi:chart-line" @click="confirmed = true">Load chart</UButton>
+    </div>
+    <div
+      v-else-if="state === 'empty'"
+      class="rounded-md border border-dashed border-surface-400 p-4 text-start text-sm text-surface-500"
+      data-testid="report-figure-empty"
+    >
+      {{ title || 'This chart' }}: no data for this report or strategy in the window.
     </div>
     <div v-else class="relative w-full" :style="{ height: `${chartHeight}px` }">
       <div ref="target" class="w-full h-full" />

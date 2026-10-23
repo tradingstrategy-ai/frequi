@@ -192,8 +192,9 @@ watch(
 
 /** Delay between automatic refreshes while the gateway computes a strategy's indicators. */
 const OVERLAY_RETRY_MS = 8000;
-/** Most automatic refreshes for one pending evaluation (about a minute; a first one can take ~30 s). */
-const OVERLAY_MAX_RETRIES = 8;
+/** Most automatic refreshes for one pending evaluation (about 3 minutes; a strategy fitted on
+ * ~560 days of hourly data, SigCombo, takes ~100 s the first time). */
+const OVERLAY_MAX_RETRIES = 23;
 let overlayRetries = 0;
 let overlayTimer: ReturnType<typeof setTimeout> | undefined;
 

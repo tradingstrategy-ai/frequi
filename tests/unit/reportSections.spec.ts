@@ -63,3 +63,11 @@ describe('reportSections API', () => {
     ]);
   });
 });
+
+describe('isEmptyFigure', () => {
+  it('flags a figure without traces, not one with data', async () => {
+    const { isEmptyFigure } = await import('@/composables/reportSections');
+    expect(isEmptyFigure({ data: [], layout: {} })).toBe(true);
+    expect(isEmptyFigure({ data: [{ x: [1], y: [2] }], layout: {} })).toBe(false);
+  });
+});
