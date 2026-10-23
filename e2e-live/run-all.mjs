@@ -107,7 +107,7 @@ async function newPage(browser, slug, viewport = { width: 1700, height: 1100 }) 
 }
 
 async function pagesForBot(browser, bot) {
-  const { context, page, errors } = await newPage(browser, bot.slug);
+  const { context, page, errors } = await newPage(browser, bot.id);
   for (const path of PAGES) {
     await page.goto(BASE + path, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2500);
@@ -163,7 +163,7 @@ async function compareForBot(browser, cbot) {
 }
 
 async function chartForBot(browser, bot, sleeves) {
-  const { context, page, errors } = await newPage(browser, bot.slug);
+  const { context, page, errors } = await newPage(browser, bot.id);
   await page.goto(BASE + '/trade', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(8000);
   const open = await botStatus(bot.slug);
@@ -229,7 +229,8 @@ async function pool(items, worker) {
 }
 
 const registry = (await api('/api/bots/_registry')) ?? {};
-let bots = (registry.bots ?? registry).map((b) => ({ slug: b.slug ?? b.id ?? b.botId, engine: b.engine, name: b.display_name ?? b.botName, candles: (b.slug ?? b.id) !== 'derive' }));
+// FreqUI names a bot by its comparison id when it has one (orchestrator_gmx_ai_gmx_vault), else by slug.
+let bots = (registry.bots ?? registry).map((b) => ({ slug: b.slug, id: b.comparison_id || b.slug, engine: b.engine, name: b.display_name, candles: b.slug !== 'derive' }));
 const comparison = ((await api('/api/comparison/bots')) ?? {}).bots ?? [];
 if (process.env.BOTS) {
   const only = new Set(process.env.BOTS.split(','));
@@ -240,7 +241,7 @@ const browser = await chromium.launch(process.env.PW_CHANNEL ? { channel: proces
 const started = Date.now();
 if (ONLY.has('pages')) {
   await pool(bots, (bot) => pagesForBot(browser, bot));
-  const { context, page, errors } = await newPage(browser, bots[0]?.slug ?? '');
+  const { context, page, errors } = await newPage(browser, bots[0]?.id ?? '');
   await page.goto(BASE + '/dashboard', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(4000);
   const { seconds, stuck } = await settle(page, 90);
@@ -256,7 +257,7 @@ if (ONLY.has('chart')) {
   const sleevesOf = Object.fromEntries(comparison.map((c) => [c.bot_id, c.sleeve_info ?? []]));
   await pool(bots.filter((b) => b.engine === 'NT' && b.candles), (b) => chartForBot(browser, b, sleevesOf[b.slug] ?? []));
 }
-if (ONLY.has('mobile')) await mobile(browser, bots.filter((b) => ['open-cz', 'aster-multi-strat', 'ichiv2-hl-live', 'gmx'].includes(b.slug)).map((b) => b.slug));
+if (ONLY.has('mobile')) await mobile(browser, bots.filter((b) => ['open-cz', 'aster-multi-strat', 'ichiv2-hl-live', 'gmx'].includes(b.slug)).map((b) => b.id));
 await browser.close();
 
 const failed = results.filter((r) => !r.ok);

@@ -346,10 +346,11 @@ export const useBotStore = defineStore('ftbot-wrapper', (): BotStoreSetup => {
     if (hasBots.value) {
       const selBotId = localStorage.getItem(AUTH_SELECTED_BOT);
       const firstBot = Object.keys(availableBots.value)[0];
-      let resolvedBotId: string | undefined = firstBot;
-      if (selBotId) {
-        resolvedBotId = Object.keys(availableBots.value).find((botId) => botId === selBotId);
-      }
+      // A remembered bot that is no longer offered (renamed or removed from the dashboard
+      // registry) falls back to the first bot instead of leaving every page without a bot.
+      const resolvedBotId =
+        (selBotId && Object.keys(availableBots.value).find((botId) => botId === selBotId)) ||
+        firstBot;
       if (!resolvedBotId) return;
       const bot = availableBots.value[resolvedBotId];
       if (!bot) return;
