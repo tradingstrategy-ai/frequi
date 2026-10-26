@@ -54,8 +54,20 @@ const normalize = (s) => String(s ?? '').toLowerCase().replace(/-\d+$/, '').repl
  * are tallied as warnings, so a bot that keeps answering slowly still shows up in the summary. */
 const warnings = [];
 
+/** Attempts per check when the browser dropped requests because the host's network changed. */
+const NETWORK_CHANGE_ATTEMPTS = 3;
+
+/** Chrome aborts every in-flight request with net::ERR_NETWORK_CHANGED when the host's interfaces
+ * change. On vitalik8 the browser shares the host network (a separate one cannot reach the site), and
+ * every container that starts or stops there adds or removes an interface, so a busy hour aborts
+ * dozens of reads (2026-10-26: 30 of 770 checks). A check that saw one is run again; one that still
+ * fails without a network change fails as before. */
 function watch(page) {
   const seen = [];
+  let networkChanged = false;
+  page.on('requestfailed', (r) => {
+    if (/ERR_NETWORK_CHANGED/.test(r.failure()?.errorText ?? '')) networkChanged = true;
+  });
   page.on('response', (r) => {
     if (!r.url().includes('/api/') || r.status() < 400) return;
     const line = `${r.status()} ${r.request().method()} ${r.url().replace(BASE, '').split('?')[0]}`;
@@ -73,7 +85,32 @@ function watch(page) {
       seen.length = 0;
       return out;
     },
+    /** True if the host's network changed since the last call (and resets it). */
+    takeNetworkChange() {
+      const changed = networkChanged;
+      networkChanged = false;
+      return changed;
+    },
   };
+}
+
+/** Run one check, again (up to NETWORK_CHANGE_ATTEMPTS) while it failed during a host network change.
+ * ``check`` returns ``{ ok, detail, seconds, shot }``; the result is recorded once, saying it was retried. */
+async function checked(errors, area, bot, item, check) {
+  let result;
+  let retries = 0;
+  errors.take();
+  errors.takeNetworkChange();
+  for (let attempt = 1; attempt <= NETWORK_CHANGE_ATTEMPTS; attempt++) {
+    result = await check();
+    const changed = errors.takeNetworkChange();
+    if (result.ok || !changed || attempt === NETWORK_CHANGE_ATTEMPTS) break;
+    retries += 1;
+    errors.take();
+  }
+  if (!result.ok && result.shot) await result.shot();
+  const note = retries ? `retried ${retries}x after a host network change` : '';
+  record(area, bot, item, result.ok, [result.detail, note].filter(Boolean).join(' | '), result.seconds);
 }
 
 async function settle(page, limitS = SETTLE_LIMIT_S) {
@@ -111,18 +148,19 @@ async function newPage(browser, slug, viewport = { width: 1700, height: 1100 }) 
 async function pagesForBot(browser, bot) {
   const { context, page, errors } = await newPage(browser, bot.id);
   for (const path of PAGES) {
-    await page.goto(BASE + path, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2500);
-    const { seconds, stuck } = await settle(page);
-    const text = (await page.locator('body').innerText().catch(() => '')).trim();
-    const problems = errors.take();
-    let expectation = '';
-    if (path === '/trade' && !/Open Trades/.test(text)) expectation = 'no Open Trades panel';
-    if (path === '/graph' && bot.candles && !(await page.locator('canvas').count())) expectation = 'no chart canvas';
-    if (text.length < 40) expectation = 'empty page';
-    const ok = !stuck && !problems.length && !expectation;
-    if (!ok) await shoot(page, `${bot.slug}${path}`);
-    record('page', bot.slug, path, ok, [stuck ? 'STUCK' : '', expectation, ...problems].filter(Boolean).join(' | '), seconds);
+    await checked(errors, 'page', bot.slug, path, async () => {
+      await page.goto(BASE + path, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(2500);
+      const { seconds, stuck } = await settle(page);
+      const text = (await page.locator('body').innerText().catch(() => '')).trim();
+      const problems = errors.take();
+      let expectation = '';
+      if (path === '/trade' && !/Open Trades/.test(text)) expectation = 'no Open Trades panel';
+      if (path === '/graph' && bot.candles && !(await page.locator('canvas').count())) expectation = 'no chart canvas';
+      if (text.length < 40) expectation = 'empty page';
+      const ok = !stuck && !problems.length && !expectation;
+      return { ok, seconds, detail: [stuck ? 'STUCK' : '', expectation, ...problems].filter(Boolean).join(' | '), shot: () => shoot(page, `${bot.slug}${path}`) };
+    });
   }
   await context.close();
 }
@@ -142,23 +180,24 @@ async function compareForBot(browser, cbot) {
   for (const sleeve of choices) {
     for (const tab of TABS) {
       const query = new URLSearchParams({ bot: cbot.bot_id, ...(sleeve.id ? { sleeve: sleeve.id } : {}) });
-      await page.goto(`${BASE}/compare/${tab}?${query}`, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(1500);
-      const { seconds, stuck } = await settle(page);
-      const main = await page.locator('main').first().innerText().catch(() => '');
-      const problems = errors.take();
-      const status = cbot.report?.status;
-      let expectation = '';
-      if (main.trim().length < 30) expectation = 'empty';
-      if (status === 'NOT_VALIDATED' && tab === 'overview' && !/NOT VALIDATED|not validated|withheld/i.test(main)) expectation = 'NOT_VALIDATED not shown';
-      if (status === 'MISSING' && tab === 'overview' && !/no (daily )?report|missing|not available|No report/i.test(main)) expectation = 'MISSING report not explained';
-      const key = contentKey(main, labels);
-      if (!sleeve.id) allKeys[tab] = key;
-      else if (STRATEGY_TABS.has(tab) && status === 'SUCCESS' && allKeys[tab] === key) expectation = 'same content as All strategies';
-      const ok = !stuck && !problems.length && !expectation;
       const item = `${tab} · ${sleeve.label}`.slice(0, 44);
-      if (!ok) await shoot(page, `cmp-${cbot.bot_id}-${tab}-${sleeve.id || 'all'}`);
-      record('compare', cbot.bot_id, item, ok, [stuck ? 'STUCK' : '', expectation, ...problems].filter(Boolean).join(' | '), seconds);
+      await checked(errors, 'compare', cbot.bot_id, item, async () => {
+        await page.goto(`${BASE}/compare/${tab}?${query}`, { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(1500);
+        const { seconds, stuck } = await settle(page);
+        const main = await page.locator('main').first().innerText().catch(() => '');
+        const problems = errors.take();
+        const status = cbot.report?.status;
+        let expectation = '';
+        if (main.trim().length < 30) expectation = 'empty';
+        if (status === 'NOT_VALIDATED' && tab === 'overview' && !/NOT VALIDATED|not validated|withheld/i.test(main)) expectation = 'NOT_VALIDATED not shown';
+        if (status === 'MISSING' && tab === 'overview' && !/no (daily )?report|missing|not available|No report/i.test(main)) expectation = 'MISSING report not explained';
+        const key = contentKey(main, labels);
+        if (!sleeve.id) allKeys[tab] = key;
+        else if (STRATEGY_TABS.has(tab) && status === 'SUCCESS' && allKeys[tab] === key) expectation = 'same content as All strategies';
+        const ok = !stuck && !problems.length && !expectation;
+        return { ok, seconds, detail: [stuck ? 'STUCK' : '', expectation, ...problems].filter(Boolean).join(' | '), shot: () => shoot(page, `cmp-${cbot.bot_id}-${tab}-${sleeve.id || 'all'}`) };
+      });
     }
   }
   await context.close();
@@ -180,6 +219,14 @@ async function chartForBot(browser, bot, sleeves) {
   errors.take();
   for (const id of picks) {
     const trade = open.find((t) => String(t.trade_id) === id);
+    await checked(errors, 'chart', bot.slug, `${trade ? 'open' : 'closed'} ${id}`, () => chartTrade(page, errors, bot, sleeves, id, trade));
+  }
+  await context.close();
+}
+
+/** Click one trade on the Trade page and judge the chart and its strategy indicators. */
+async function chartTrade(page, errors, bot, sleeves, id, trade) {
+  {
     await page.locator('tbody tr').filter({ hasText: `${id} |` }).first().click();
     // The note must name this trade's own strategy (a stale note from the previous trade on the
     // same pair must not pass); live ids pinned to an older class name are aliased.
@@ -207,24 +254,23 @@ async function chartForBot(browser, bot, sleeves) {
     if (!(await page.locator('canvas').count())) expectation += ' no chart canvas';
     const problems = errors.take();
     const ok = !expectation && !problems.length;
-    if (!ok) await shoot(page, `chart-${bot.slug}-${id}`);
-    record('chart', bot.slug, `${trade ? 'open' : 'closed'} ${id}`, ok, [expectation.trim(), note && ok ? note : '', ...problems].filter(Boolean).join(' | '), seconds);
+    return { ok, seconds, detail: [expectation.trim(), note && ok ? note : '', ...problems].filter(Boolean).join(' | '), shot: () => shoot(page, `chart-${bot.slug}-${id}`) };
   }
-  await context.close();
 }
 
 async function mobile(browser, bots) {
   for (const slug of bots) {
     const { context, page, errors } = await newPage(browser, slug, { width: 390, height: 844 });
     for (const path of ['/trade', '/graph', `/compare/overview?bot=${slug}`]) {
-      await page.goto(BASE + path, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(2500);
-      const { seconds, stuck } = await settle(page);
-      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-      const problems = errors.take();
-      const ok = !stuck && !problems.length && overflow <= 4;
-      if (!ok) await shoot(page, `mobile-${slug}${path}`);
-      record('mobile', slug, path, ok, [stuck ? 'STUCK' : '', overflow > 4 ? `page ${overflow}px wider than the screen` : '', ...problems].filter(Boolean).join(' | '), seconds);
+      await checked(errors, 'mobile', slug, path, async () => {
+        await page.goto(BASE + path, { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(2500);
+        const { seconds, stuck } = await settle(page);
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        const problems = errors.take();
+        const ok = !stuck && !problems.length && overflow <= 4;
+        return { ok, seconds, detail: [stuck ? 'STUCK' : '', overflow > 4 ? `page ${overflow}px wider than the screen` : '', ...problems].filter(Boolean).join(' | '), shot: () => shoot(page, `mobile-${slug}${path}`) };
+      });
     }
     await context.close();
   }
