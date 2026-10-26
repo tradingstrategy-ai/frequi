@@ -22,6 +22,8 @@ const SETTLE_LIMIT_S = 45;
 const OVERLAY_LIMIT_S = 190;
 /** Closed trades clicked per NT bot on the Chart, beside every open one. */
 const CLOSED_PER_BOT = 3;
+/** Longest the Chart page may take to draw its first chart (a slow bot's cold candle read). */
+const CHART_WAIT_MS = 30_000;
 /** Pages visited per bot. */
 const PAGES = ['/trade', '/graph', '/balance', '/open_trades', '/trade_history', '/pairlist', '/logs'];
 /** Compare tabs (route path -> name). */
@@ -156,6 +158,9 @@ async function pagesForBot(browser, bot) {
       const problems = errors.take();
       let expectation = '';
       if (path === '/trade' && !/Open Trades/.test(text)) expectation = 'no Open Trades panel';
+      // The chart loader is not a spinner (settle() does not see it), and a slow bot's first candle
+      // read takes ~12 s (ichi-vault, 2026-10-26): wait for the chart as a user would.
+      if (path === '/graph' && bot.candles) await page.locator('canvas').first().waitFor({ timeout: CHART_WAIT_MS }).catch(() => {});
       if (path === '/graph' && bot.candles && !(await page.locator('canvas').count())) expectation = 'no chart canvas';
       if (text.length < 40) expectation = 'empty page';
       const ok = !stuck && !problems.length && !expectation;
