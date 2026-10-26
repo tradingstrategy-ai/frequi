@@ -62,6 +62,11 @@ const warnings = [];
  * warnings so they stay visible, but they do not fail a release of the dashboard. */
 const reportWarnings = [];
 
+/** 502s the gateway marks ``X-Upstream-Failure``: the bot behind it was down or restarting, which the
+ * dashboard shows by design. A 45-minute run over 32 bots meets restarts (ftr and gmx, 2026-10-26: 12 mobile
+ * checks failed on ftr's 502s). Tallied beside the 503s; a 502 without the mark (a gateway fault) still fails. */
+const botDownWarnings = [];
+
 /** Attempts per check when the browser dropped requests because the host's network changed. */
 const NETWORK_CHANGE_ATTEMPTS = 3;
 
@@ -73,6 +78,8 @@ const NETWORK_CHANGE_ATTEMPTS = 3;
 function watch(page) {
   const seen = [];
   let networkChanged = false;
+  /** The page got a marked 502 since the last take(): FreqUI then logs it to the console too. */
+  let upstreamFailure = false;
   page.on('requestfailed', (r) => {
     if (/ERR_NETWORK_CHANGED/.test(r.failure()?.errorText ?? '')) networkChanged = true;
   });
@@ -80,12 +87,17 @@ function watch(page) {
     if (!r.url().includes('/api/') || r.status() < 400) return;
     const line = `${r.status()} ${r.request().method()} ${r.url().replace(BASE, '').split('?')[0]}`;
     if (r.status() === 503 && r.headers()['retry-after']) warnings.push(line);
+    else if (r.status() === 502 && r.headers()['x-upstream-failure']) {
+      botDownWarnings.push(line);
+      upstreamFailure = true;
+    }
     else seen.push(line);
   });
   page.on('pageerror', (e) => seen.push(`pageerror ${String(e).slice(0, 120)}`));
   page.on('console', (m) => {
     // The browser logs every non-2xx response; those are judged on the response above.
     if (m.type() !== 'error' || /Failed to load resource/.test(m.text())) return;
+    if (upstreamFailure && /status(?: code)?:? 502/.test(m.text())) return;
     if (m.location().url.includes('/api/reports/')) reportWarnings.push(`${page.url().replace(BASE, '').split('?')[0]}: ${m.text().slice(0, 100)}`);
     else seen.push(`console ${m.text().slice(0, 120)}`);
   });
@@ -93,6 +105,7 @@ function watch(page) {
     take() {
       const out = [...new Set(seen)];
       seen.length = 0;
+      upstreamFailure = false;
       return out;
     },
     /** True if the host's network changed since the last call (and resets it). */
@@ -337,6 +350,8 @@ const summary = [
   ...failed.map((r) => `  FAIL ${r.area} ${r.bot} ${r.item}: ${r.detail}`),
   `  report-page script warnings: ${reportWarnings.length}`,
   ...Object.entries(reportWarnings.reduce((acc, w) => ({ ...acc, [w]: (acc[w] ?? 0) + 1 }), {})).map(([w, n]) => `    ${n}x ${w}`),
+  `  bot-down 502 warnings: ${botDownWarnings.length}`,
+  ...Object.entries(botDownWarnings.reduce((acc, w) => ({ ...acc, [w.split('/api/v1/')[0]]: (acc[w.split('/api/v1/')[0]] ?? 0) + 1 }), {})).map(([w, n]) => `    ${n}x ${w}`),
   `  slow-bot 503 warnings: ${warnings.length}`,
   ...Object.entries(warnings.reduce((acc, w) => ({ ...acc, [w]: (acc[w] ?? 0) + 1 }), {})).map(([w, n]) => `    ${n}x ${w}`),
 ];
