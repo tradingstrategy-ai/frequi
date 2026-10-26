@@ -56,6 +56,12 @@ const normalize = (s) => String(s ?? '').toLowerCase().replace(/-\d+$/, '').repl
  * are tallied as warnings, so a bot that keeps answering slowly still shows up in the summary. */
 const warnings = [];
 
+/** Script errors raised inside a bot's own report page (its iframe, served from /api/reports/): the
+ * report's content, not the dashboard's code. microcap-dynamic-cap's report logs a Plotly
+ * "rotate(-90,NaN,...)" axis-title error when opened directly, outside FreqUI. Tallied beside the slow-bot
+ * warnings so they stay visible, but they do not fail a release of the dashboard. */
+const reportWarnings = [];
+
 /** Attempts per check when the browser dropped requests because the host's network changed. */
 const NETWORK_CHANGE_ATTEMPTS = 3;
 
@@ -79,7 +85,9 @@ function watch(page) {
   page.on('pageerror', (e) => seen.push(`pageerror ${String(e).slice(0, 120)}`));
   page.on('console', (m) => {
     // The browser logs every non-2xx response; those are judged on the response above.
-    if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) seen.push(`console ${m.text().slice(0, 120)}`);
+    if (m.type() !== 'error' || /Failed to load resource/.test(m.text())) return;
+    if (m.location().url.includes('/api/reports/')) reportWarnings.push(`${page.url().replace(BASE, '').split('?')[0]}: ${m.text().slice(0, 100)}`);
+    else seen.push(`console ${m.text().slice(0, 120)}`);
   });
   return {
     take() {
@@ -104,7 +112,9 @@ async function checked(errors, area, bot, item, check) {
   errors.take();
   errors.takeNetworkChange();
   for (let attempt = 1; attempt <= NETWORK_CHANGE_ATTEMPTS; attempt++) {
-    result = await check();
+    // A check that throws (a click that timed out on a loaded host) is one failed check, never the
+    // end of the whole run: 2026-10-26 a single trade-row timeout killed a 770-check matrix at 766.
+    result = await check().catch((error) => ({ ok: false, seconds: null, detail: `threw ${String(error.message ?? error).split('\n')[0].slice(0, 140)}` }));
     const changed = errors.takeNetworkChange();
     if (result.ok || !changed || attempt === NETWORK_CHANGE_ATTEMPTS) break;
     retries += 1;
@@ -325,6 +335,8 @@ const summary = [
   `${BASE} — ${results.length} checks, ${failed.length} failed, ${((Date.now() - started) / 60000).toFixed(1)} min`,
   ...Object.entries(results.reduce((acc, r) => ({ ...acc, [r.area]: [(acc[r.area]?.[0] ?? 0) + 1, (acc[r.area]?.[1] ?? 0) + (r.ok ? 0 : 1)] }), {})).map(([area, [n, f]]) => `  ${area}: ${n - f}/${n} pass`),
   ...failed.map((r) => `  FAIL ${r.area} ${r.bot} ${r.item}: ${r.detail}`),
+  `  report-page script warnings: ${reportWarnings.length}`,
+  ...Object.entries(reportWarnings.reduce((acc, w) => ({ ...acc, [w]: (acc[w] ?? 0) + 1 }), {})).map(([w, n]) => `    ${n}x ${w}`),
   `  slow-bot 503 warnings: ${warnings.length}`,
   ...Object.entries(warnings.reduce((acc, w) => ({ ...acc, [w]: (acc[w] ?? 0) + 1 }), {})).map(([w, n]) => `    ${n}x ${w}`),
 ];
