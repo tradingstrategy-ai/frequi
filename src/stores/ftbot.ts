@@ -361,8 +361,8 @@ export function createBotSubStore(botId: string, botName: string) {
             selectedPair.value = mappedOpenTrades[0]?.pair || '';
           }
         }
-      } catch (data) {
-        return console.error(data);
+      } catch (error) {
+        return Promise.reject(error);
       }
     }
 
@@ -758,7 +758,6 @@ export function createBotSubStore(botId: string, botName: string) {
 
         return Promise.resolve(data);
       } catch (error) {
-        console.error(error);
         return Promise.reject(error);
       }
     }
