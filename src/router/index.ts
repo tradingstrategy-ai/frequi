@@ -81,7 +81,14 @@ export function prefetchRoutePages(): void {
     .getRoutes()
     .flatMap((route) => Object.values(route.components ?? {}))
     .filter((component): component is () => Promise<unknown> => typeof component === 'function');
-  void Promise.allSettled(loaders.map((load) => load()));
+  const pending = [...new Set(loaders)];
+  const worker = async () => {
+    while (pending.length > 0) {
+      const load = pending.shift();
+      if (load) await load().catch(() => undefined);
+    }
+  };
+  void Promise.all([worker(), worker()]);
 }
 
 if (import.meta.hot?.data) handleHotUpdate(router);

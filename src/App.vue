@@ -6,8 +6,11 @@ const colorStore = useColorStore();
 onMounted(() => {
   setTimezone(settingsStore.timezone);
   colorStore.updateProfitLossColor();
-  // Before bot polling fills the connection pool (see prefetchRoutePages).
-  prefetchRoutePages();
+  // Start only after the initial page has loaded. Fetching every lazy route
+  // during mount can occupy all browser connections and delay DOMContentLoaded.
+  window.addEventListener('load', () => window.setTimeout(prefetchRoutePages, 2000), {
+    once: true,
+  });
 });
 watch(
   () => settingsStore.timezone,
