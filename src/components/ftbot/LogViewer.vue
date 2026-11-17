@@ -43,7 +43,11 @@ function scrollToBottom() {
       title="Bot logs unavailable"
       description="The bot API did not return logs. Check the bot connection and retry."
       class="w-full"
-    />
+    >
+      <template #actions>
+        <UButton color="neutral" size="sm" @click="refreshLogs">Retry</UButton>
+      </template>
+    </UAlert>
     <div
       v-else
       ref="scrollContainer"

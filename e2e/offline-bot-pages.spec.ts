@@ -21,6 +21,9 @@ test('unavailable bot reads show a retryable state without page errors', async (
   ]) {
     await page.goto(path);
     await expect(page.getByText(notice, { exact: true })).toBeVisible();
+    if (path === '/logs') {
+      await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+    }
   }
   expect(pageErrors).toEqual([]);
 });
