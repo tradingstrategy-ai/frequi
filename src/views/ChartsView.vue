@@ -4,6 +4,7 @@ import type { ExchangeSelection, Markets, MarketsPayload, PairHistoryPayload } f
 
 const botStore = useBotStore();
 const chartStore = useChartConfigStore();
+const loadError = ref(false);
 
 const finalTimeframe = computed<string>(() => {
   return botStore.activeBot.isWebserverMode
@@ -30,13 +31,22 @@ const availablePairs = computed<string[]>(() => {
   return botStore.activeBot.whitelist;
 });
 
-onMounted(() => {
-  if (botStore.activeBot.isWebserverMode) {
-    // Get available pairs for all timeframes
-    botStore.activeBot.getAvailablePairs({});
-  } else if (!botStore.activeBot.whitelist || botStore.activeBot.whitelist.length === 0) {
-    botStore.activeBot.getWhitelist();
+async function refreshPairs() {
+  loadError.value = false;
+  try {
+    if (botStore.activeBot.isWebserverMode) {
+      // Get available pairs for all timeframes
+      await botStore.activeBot.getAvailablePairs({});
+    } else if (!botStore.activeBot.whitelist || botStore.activeBot.whitelist.length === 0) {
+      await botStore.activeBot.getWhitelist();
+    }
+  } catch {
+    loadError.value = true;
   }
+}
+
+onMounted(() => {
+  void refreshPairs();
 });
 
 function refreshOHLCV(pair: string, columns: string[]) {
@@ -105,6 +115,17 @@ watch(
 
 <template>
   <div class="flex flex-col h-full">
+    <UAlert
+      v-if="loadError"
+      color="warning"
+      title="Bot chart unavailable"
+      description="The bot API did not return any pairs for this chart. Check the bot connection and retry."
+      class="md:mx-2 mt-2"
+    >
+      <template #actions>
+        <UButton color="neutral" size="sm" @click="refreshPairs">Retry</UButton>
+      </template>
+    </UAlert>
     <!-- <div v-if="isWebserverMode" class="me-auto ms-3"> -->
     <!-- Currently only available in Webserver mode -->
     <!-- <b-form-checkbox v-model="historicView">HistoricData</b-form-checkbox> -->

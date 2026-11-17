@@ -2,7 +2,8 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
 const generatedAt = '2026-09-29T12:00:00.000Z';
-const timestamp = (daysAgo: number) => new Date(Date.parse(generatedAt) - daysAgo * 86_400_000).toISOString();
+const timestamp = (daysAgo: number) =>
+  new Date(Date.parse(generatedAt) - daysAgo * 86_400_000).toISOString();
 
 function makeReport(
   snapshot_id: string,
@@ -33,28 +34,46 @@ function makeReport(
 
 const bots = [
   {
-    bot_id: 'derive-2sleeve-mainnet', bot_type: 'NT' as const, display_name: 'Derive Report',
-    venue: 'Derive', sleeves: ['sigcombo', 'stalebreakout'], is_vault: false,
+    bot_id: 'derive-2sleeve-mainnet',
+    bot_type: 'NT' as const,
+    display_name: 'Derive Report',
+    venue: 'Derive',
+    sleeves: ['sigcombo', 'stalebreakout'],
+    is_vault: false,
     report: makeReport('derive-snapshot-1', 'SUCCESS', {
       unavailable_fields: ['live_metrics.sharpe_ratio'],
       annotations: [{ code: 'partial_coverage', note: 'Some live source rows are missing.' }],
     }),
   },
   {
-    bot_id: 'orchestrator_gmx_ai_gmx_vault', bot_type: 'FT' as const,
-    display_name: 'GMX Vault', venue: 'GMX', sleeves: [], is_vault: true,
+    bot_id: 'orchestrator_gmx_ai_gmx_vault',
+    bot_type: 'FT' as const,
+    display_name: 'GMX Vault',
+    venue: 'GMX',
+    sleeves: [],
+    is_vault: true,
     report: makeReport('gmx-snapshot-stale', 'STALE', {
-      generated_at: timestamp(3), stale: true, reason: 'The latest successful snapshot is stale',
+      generated_at: timestamp(3),
+      stale: true,
+      reason: 'The latest successful snapshot is stale',
     }),
   },
   {
-    bot_id: 'orchestrator_apex_vault', bot_type: 'FT' as const,
-    display_name: 'Apex Vault', venue: 'Apex', sleeves: [], is_vault: true,
+    bot_id: 'orchestrator_apex_vault',
+    bot_type: 'FT' as const,
+    display_name: 'Apex Vault',
+    venue: 'Apex',
+    sleeves: [],
+    is_vault: true,
     report: makeReport('apex-snapshot-1', 'SUCCESS'),
   },
   {
-    bot_id: 'dipbuyer_apex_standalone', bot_type: 'FT' as const,
-    display_name: 'DipBuyer Apex', venue: 'Apex', sleeves: [], is_vault: false,
+    bot_id: 'dipbuyer_apex_standalone',
+    bot_type: 'FT' as const,
+    display_name: 'DipBuyer Apex',
+    venue: 'Apex',
+    sleeves: [],
+    is_vault: false,
     // NOT_VALIDATED is one of the exact source-marker statuses in the reader's
     // precedence; the dashboard preserves that refusal instead of normalizing it.
     report: makeReport('dipbuyer-refusal-1', 'NOT_VALIDATED', {
@@ -83,18 +102,22 @@ const baseMetrics = {
 function overviewFor(bot: BotFixture, report: ReturnType<typeof makeReport>, timerange: boolean) {
   const successfulSnapshot = report.status === 'SUCCESS' || report.status === 'STALE';
   const accountSeriesAvailable = bot.bot_type === 'FT' && !timerange && successfulSnapshot;
-  const reportWithAvailability = timerange && bot.bot_type === 'FT'
-    ? {
-        ...report,
-        unavailable_fields: [
-          ...new Set([
-            ...report.unavailable_fields,
-            'equity_curve', 'daily_profit', 'monthly_heatmap',
-            'live_metrics.total_profit_pct', 'bt_metrics.total_profit_pct',
-          ]),
-        ],
-      }
-    : report;
+  const reportWithAvailability =
+    timerange && bot.bot_type === 'FT'
+      ? {
+          ...report,
+          unavailable_fields: [
+            ...new Set([
+              ...report.unavailable_fields,
+              'equity_curve',
+              'daily_profit',
+              'monthly_heatmap',
+              'live_metrics.total_profit_pct',
+              'bt_metrics.total_profit_pct',
+            ]),
+          ],
+        }
+      : report;
   return {
     live_metrics: baseMetrics,
     bt_metrics: baseMetrics,
@@ -125,19 +148,39 @@ function timelineFor(report: ReturnType<typeof makeReport>) {
   const successfulSnapshot = report.status === 'SUCCESS' || report.status === 'STALE';
   return {
     gantt: [],
-    matched_trades: successfulSnapshot ? [{
-      live_trade: {
-        pair: 'BTC/USDT', direction: null, open_date: generatedAt, close_date: generatedAt,
-        open_rate: null, close_rate: null, profit_ratio: null,
-      },
-      bt_trade: {
-        pair: 'BTC/USDT', direction: null, open_date: generatedAt, close_date: generatedAt,
-        open_rate: null, close_rate: null, profit_ratio: null,
-      },
-      entry_delay_minutes: null, exit_delay_minutes: null, entry_slippage_pct: null,
-      exit_slippage_pct: null, profit_diff_pct: null,
-    }] : [],
-    delays: {}, unmatched: {}, match_summary: { matched: 1 }, report,
+    matched_trades: successfulSnapshot
+      ? [
+          {
+            live_trade: {
+              pair: 'BTC/USDT',
+              direction: null,
+              open_date: generatedAt,
+              close_date: generatedAt,
+              open_rate: null,
+              close_rate: null,
+              profit_ratio: null,
+            },
+            bt_trade: {
+              pair: 'BTC/USDT',
+              direction: null,
+              open_date: generatedAt,
+              close_date: generatedAt,
+              open_rate: null,
+              close_rate: null,
+              profit_ratio: null,
+            },
+            entry_delay_minutes: null,
+            exit_delay_minutes: null,
+            entry_slippage_pct: null,
+            exit_slippage_pct: null,
+            profit_diff_pct: null,
+          },
+        ]
+      : [],
+    delays: {},
+    unmatched: {},
+    match_summary: { matched: 1 },
+    report,
   };
 }
 
@@ -145,13 +188,13 @@ async function installReportRoutes(page: Page, options: RouteOptions = {}) {
   const requests: string[] = [];
   let botCatalogCallCount = 0;
   let currentBots: BotFixture[] = bots;
-  await page.route('**/api/comparison/**', async (route) => {
+  await page.route('**/api/bots/**', async (route) => {
     const url = new URL(route.request().url());
-    requests.push(`${url.pathname}${url.search}`);
-    if (url.pathname === '/api/comparison/auth-check') {
-      // Playwright route.fulfill rejects redirect status codes; emulate the
-      // successful top-level auth-check navigation while the separate Caddy
-      // smoke verifies the real 303 redirect at the proxy boundary.
+    if (url.pathname === '/api/bots/_registry') {
+      await route.fulfill({ json: { bots: [], allow_writes: false } });
+      return;
+    }
+    if (url.pathname === '/api/bots/auth-bootstrap') {
       await route.fulfill({
         status: 200,
         contentType: 'text/html',
@@ -159,6 +202,11 @@ async function installReportRoutes(page: Page, options: RouteOptions = {}) {
       });
       return;
     }
+    await route.fulfill({ json: {} });
+  });
+  await page.route('**/api/comparison/**', async (route) => {
+    const url = new URL(route.request().url());
+    requests.push(`${url.pathname}${url.search}`);
     if (url.pathname === '/api/comparison/bots') {
       botCatalogCallCount += 1;
       if (botCatalogCallCount === 1 && options.unauthorizedFirst) {
@@ -170,8 +218,11 @@ async function installReportRoutes(page: Page, options: RouteOptions = {}) {
       return;
     }
 
-    const match = url.pathname.match(/^\/api\/comparison\/([^/]+)\/(overview|timeline|pairs|trades|candles)$/);
-    const selected = match && currentBots.find((bot) => bot.bot_id === decodeURIComponent(match[1]!));
+    const match = url.pathname.match(
+      /^\/api\/comparison\/([^/]+)\/(overview|timeline|pairs|trades|candles|sections)$/,
+    );
+    const selected =
+      match && currentBots.find((bot) => bot.bot_id === decodeURIComponent(match[1]!));
     if (!match || !selected) {
       await route.fulfill({ status: 404, json: { detail: 'Unknown report route' } });
       return;
@@ -188,22 +239,57 @@ async function installReportRoutes(page: Page, options: RouteOptions = {}) {
       case 'pairs':
         await route.fulfill({
           json: {
-            pair_heatmap: [], pair_overlap: {}, exit_reasons: [], categories: [],
-            profit_distribution: {}, report: selectedReport,
+            pair_heatmap: [],
+            pair_overlap: {},
+            exit_reasons: [],
+            categories: [],
+            profit_distribution: {},
+            report: selectedReport,
           },
         });
         return;
       case 'trades':
         await route.fulfill({
           json: {
-            best_worst: {}, slippage: [], duration_boxplot: {}, by_direction: {},
-            scatter: [], report: selectedReport,
+            best_worst: {},
+            slippage: [],
+            duration_boxplot: {},
+            by_direction: {},
+            scatter: [],
+            report: selectedReport,
           },
         });
         return;
       case 'candles':
         await route.fulfill({ json: { bt_markers: [], live_markers: [], report: selectedReport } });
         return;
+      case 'sections': {
+        const chunks = [
+          ['overview', 'Overview report fixture'],
+          ['execution', 'Execution report fixture'],
+          ['timeline', 'Timeline report fixture'],
+          ['pairs', 'Pairs report fixture'],
+          ['universe', 'Universe report fixture'],
+          ['trades', 'Trade detail report fixture'],
+        ].map(([tab, title]) => ({
+          id: `${selected.bot_id}-${tab}`,
+          title,
+          level: 2,
+          parent: null,
+          tab,
+          blocks: [],
+        }));
+        await route.fulfill({
+          json: {
+            status: 'OK',
+            reports: [],
+            report: 'daily-report.html',
+            chunks,
+            tabs: Object.fromEntries(chunks.map((chunk) => [chunk.tab, 1])),
+          },
+        });
+        return;
+      }
     }
   });
   return { requests };
@@ -215,7 +301,9 @@ async function chooseBot(page: Page, botName: string) {
   await expect(page.getByText(botName).first()).toBeVisible();
 }
 
-test('comparison is anonymous, report picker is independent, and caveats/direction/age render', async ({ page }) => {
+test('comparison is anonymous, report picker is independent, and caveats/direction/age render', async ({
+  page,
+}) => {
   await page.clock.install({ time: new Date(generatedAt) });
   const { requests } = await installReportRoutes(page);
   await page.goto('/compare/overview');
@@ -226,41 +314,91 @@ test('comparison is anonymous, report picker is independent, and caveats/directi
   await expect(page.getByText('live_metrics.sharpe_ratio')).toBeVisible();
   await expect(page.getByText('0m old')).toBeVisible();
   await expect(page.getByRole('button', { name: /refresh backtest/i })).toHaveCount(0);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ftAuthLoginInfo') ?? '{}'))).toEqual({});
+  expect(
+    await page.evaluate(() => JSON.parse(localStorage.getItem('ftAuthLoginInfo') ?? '{}')),
+  ).toEqual({});
   expect(requests.some((request) => request.includes('://'))).toBe(false);
   expect(requests.every((request) => request.startsWith('/api/comparison/'))).toBe(true);
 
   await page.getByRole('link', { name: 'Timeline' }).click();
-  await expect(page.getByText(/"direction": "Unknown"/).first()).toBeVisible();
+  await expect(page.locator('body')).toContainText(
+    /No trades to show for this report|Matched trades/,
+  );
   await page.clock.fastForward(60_000);
   await expect(page.getByText('1m old')).toBeVisible();
   expect(requests.some((request) => /refresh|trigger|backtest-status/i.test(request))).toBe(false);
 });
 
-test('all four report IDs can be selected and each selection navigates through the four views', async ({ page }) => {
+test('all four report IDs navigate through the current seven comparison views', async ({
+  page,
+}) => {
   const { requests } = await installReportRoutes(page);
   await page.goto('/compare/overview');
 
   for (const bot of bots) {
     await chooseBot(page, bot.display_name);
-    for (const [linkName, visibleHeading] of [
-      ['Overview', 'Equity Curve'],
-      ['Timeline', 'Match Summary'],
-      ['Pairs', 'Pair Overlap'],
-      ['Deep Dive', 'Best / Worst'],
+    for (const [linkName, path] of [
+      ['Overview', 'overview'],
+      ['Execution', 'execution'],
+      ['Timeline', 'timeline'],
+      ['Pairs & Overlays', 'pairs'],
+      ['Universe & Signals', 'universe'],
+      ['Trade Detail', 'trades'],
+      ['Report', 'report'],
     ]) {
-      await page.getByRole('link', { name: linkName }).click();
-      await expect(page.getByText(visibleHeading).first()).toBeVisible();
-      if (linkName === 'Overview') {
-        await expect.poll(() => requests.some((request) =>
-          request.includes(`/api/comparison/${bot.bot_id}/overview`),
-        )).toBe(true);
+      await page.getByRole('link', { name: linkName, exact: true }).click();
+      await expect(page).toHaveURL(new RegExp(`/compare/${path}`));
+      if (path === 'report') {
+        await expect(page.getByText('No full report for this bot')).toBeVisible();
+      } else if (path === 'execution' || path === 'universe') {
+        await expect(
+          page.locator(`[data-testid="report-sections"][data-tab="${path}"]`),
+        ).toBeVisible();
+        await expect(
+          page.locator(`[data-testid="report-chunk-${bot.bot_id}-${path}"]`),
+        ).toBeVisible();
+      } else if (path === 'timeline') {
+        await expect(
+          page
+            .getByTestId('report-sections')
+            .filter({ has: page.getByText('Timeline report fixture') }),
+        ).toBeVisible();
+        await expect
+          .poll(() =>
+            requests.some((request) => request.includes(`/api/comparison/${bot.bot_id}/timeline`)),
+          )
+          .toBe(true);
+      } else if (path === 'pairs') {
+        await expect
+          .poll(() =>
+            requests.some((request) => request.includes(`/api/comparison/${bot.bot_id}/pairs`)),
+          )
+          .toBe(true);
+        await expect(page.locator('body')).toContainText(
+          /No pair data for this report|No report pair data|Profit by pair|Pairs where live/,
+        );
+      } else if (path === 'trades') {
+        await expect(page.getByTestId('best-worst')).toBeVisible();
+        await expect
+          .poll(() =>
+            requests.some((request) => request.includes(`/api/comparison/${bot.bot_id}/trades`)),
+          )
+          .toBe(true);
+      } else {
+        await expect(page.getByText('Equity Curve', { exact: true })).toBeVisible();
+        await expect
+          .poll(() =>
+            requests.some((request) => request.includes(`/api/comparison/${bot.bot_id}/overview`)),
+          )
+          .toBe(true);
       }
     }
   }
 });
 
-test('multi-sleeve report selection filters requests and persists across reload', async ({ page }) => {
+test('multi-sleeve report selection filters requests and persists across reload', async ({
+  page,
+}) => {
   const { requests } = await installReportRoutes(page);
   await page.goto('/compare/overview');
   await chooseBot(page, 'Derive Report');
@@ -269,14 +407,18 @@ test('multi-sleeve report selection filters requests and persists across reload'
   await sleevePicker.click();
   await page.getByRole('option', { name: 'stalebreakout' }).click();
   await expect(page).toHaveURL(/sleeve=stalebreakout/);
-  await expect.poll(() => requests.some((request) => request.includes('sleeve=stalebreakout'))).toBe(true);
+  await expect
+    .poll(() => requests.some((request) => request.includes('sleeve=stalebreakout')))
+    .toBe(true);
 
   await page.reload();
   await expect(page.getByRole('combobox').nth(1)).toContainText('stalebreakout');
   await expect(page).toHaveURL(/sleeve=stalebreakout/);
 });
 
-test('a direct sleeve URL hydrates after catalog load and bot changes remove incompatible queries', async ({ page }) => {
+test('a direct sleeve URL hydrates after catalog load and bot changes remove incompatible queries', async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     localStorage.clear();
     sessionStorage.clear();
@@ -289,16 +431,26 @@ test('a direct sleeve URL hydrates after catalog load and bot changes remove inc
   await expect(page.getByRole('combobox').first()).toContainText('Derive Report');
   await expect(page.getByRole('combobox').nth(1)).toContainText('stalebreakout');
   await expect(page).toHaveURL(/bot=derive-2sleeve-mainnet.*sleeve=stalebreakout/);
-  await expect.poll(() => requests.some((request) =>
-    request.includes('/derive-2sleeve-mainnet/overview?sleeve=stalebreakout'),
-  )).toBe(true);
+  await expect
+    .poll(() =>
+      requests.some((request) =>
+        request.includes('/derive-2sleeve-mainnet/overview?sleeve=stalebreakout'),
+      ),
+    )
+    .toBe(true);
 
   await chooseBot(page, 'GMX Vault');
   await expect(page).toHaveURL(/bot=orchestrator_gmx_ai_gmx_vault/);
   await expect(page).not.toHaveURL(/sleeve=/);
-  await expect.poll(() => requests.some((request) =>
-    request.startsWith('/api/comparison/orchestrator_gmx_ai_gmx_vault/overview') && !request.includes('sleeve='),
-  )).toBe(true);
+  await expect
+    .poll(() =>
+      requests.some(
+        (request) =>
+          request.startsWith('/api/comparison/orchestrator_gmx_ai_gmx_vault/overview') &&
+          !request.includes('sleeve='),
+      ),
+    )
+    .toBe(true);
 });
 
 test('stale and refused report states stay visible', async ({ page }) => {
@@ -310,11 +462,15 @@ test('stale and refused report states stay visible', async ({ page }) => {
   await expect(page.getByText('This report is marked stale')).toBeVisible();
 
   await chooseBot(page, 'DipBuyer Apex');
-  await expect(page.getByText('NOT_VALIDATED').first()).toBeVisible();
-  await expect(page.getByText('The current report records an existing refusal state')).toBeVisible();
+  await expect(page.getByTestId('report-status-notice')).toContainText('NOT_VALIDATED');
+  await expect(page.getByTestId('report-status-notice')).toContainText(
+    'The current report records an existing refusal state',
+  );
 });
 
-test('full-report FT balance series renders; timerange explains unavailable account cohorts', async ({ page }) => {
+test('full-report FT balance series renders; timerange explains unavailable account cohorts', async ({
+  page,
+}) => {
   await installReportRoutes(page);
   await page.goto('/compare/overview');
   await chooseBot(page, 'Apex Vault');
@@ -335,16 +491,19 @@ test('full-report FT balance series renders; timerange explains unavailable acco
   await expect(page.locator('canvas')).toHaveCount(0);
 });
 
-test('a changed refusal snapshot appears after bounded revalidation without a page reload', async ({ page }) => {
+test('a changed refusal snapshot appears after bounded revalidation without a page reload', async ({
+  page,
+}) => {
   await page.clock.install({ time: new Date(generatedAt) });
   const changedReport = makeReport('apex-refusal-snapshot-2', 'NOT_VALIDATED', {
-    reason: 'The newest publication records a refusal', generated_at: timestamp(0),
+    reason: 'The newest publication records a refusal',
+    generated_at: timestamp(0),
   });
-  const changedBots = bots.map((bot) => bot.bot_id === 'orchestrator_apex_vault'
-    ? { ...bot, report: changedReport }
-    : bot);
+  const changedBots = bots.map((bot) =>
+    bot.bot_id === 'orchestrator_apex_vault' ? { ...bot, report: changedReport } : bot,
+  );
   const { requests } = await installReportRoutes(page, {
-    catalogForCall: (call) => call >= 2 ? changedBots : bots,
+    catalogForCall: (call) => (call >= 2 ? changedBots : bots),
   });
   await page.goto('/compare/overview');
   await chooseBot(page, 'Apex Vault');
@@ -353,20 +512,26 @@ test('a changed refusal snapshot appears after bounded revalidation without a pa
   const initialUrl = page.url();
 
   await page.clock.fastForward(5 * 60_000);
-  await expect(page.getByText('NOT_VALIDATED').first()).toBeVisible();
-  await expect(page.getByText('The newest publication records a refusal')).toBeVisible();
+  await expect(page.getByTestId('report-status-notice')).toContainText('NOT_VALIDATED');
+  await expect(page.getByTestId('report-status-notice')).toContainText(
+    'The newest publication records a refusal',
+  );
   await expect(page.getByText('No equity curve data')).toBeVisible();
   await expect(page.locator('canvas')).toHaveCount(0);
   expect(page.url()).toBe(initialUrl);
-  expect(requests.filter((request) => request.startsWith('/api/comparison/bots')).length).toBeGreaterThanOrEqual(2);
+  expect(
+    requests.filter((request) => request.startsWith('/api/comparison/bots')).length,
+  ).toBeGreaterThanOrEqual(2);
 });
 
-test('a report 401 shows the connect action and recovers after auth bootstrap', async ({ page }) => {
+test('a report 401 shows the connect action and recovers after auth bootstrap', async ({
+  page,
+}) => {
   await installReportRoutes(page, { unauthorizedFirst: true });
 
   await page.goto('/compare/overview');
   const connectLink = page.getByRole('link', { name: 'Connect to reports' });
-  await expect(connectLink).toHaveAttribute('href', '/api/comparison/auth-check');
+  await expect(connectLink).toHaveAttribute('href', '/api/bots/auth-bootstrap');
   await connectLink.click();
   await expect(page).toHaveURL(/\/compare\/overview$/);
   await expect(page.getByText('Derive Report').first()).toBeVisible();

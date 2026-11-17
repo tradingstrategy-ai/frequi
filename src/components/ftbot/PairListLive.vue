@@ -2,14 +2,20 @@
 const newblacklistpair = ref('');
 const blacklistSelect = ref<number[]>([]);
 const botStore = useBotStore();
+const loadError = ref(false);
 
-function initBlacklist() {
+async function initBlacklist() {
+  loadError.value = false;
+  const reads: Promise<unknown>[] = [];
   if (botStore.activeBot.whitelist.length === 0) {
-    botStore.activeBot.getWhitelist();
+    reads.push(botStore.activeBot.getWhitelist());
   }
   if (botStore.activeBot.blacklist.length === 0) {
-    botStore.activeBot.getBlacklist();
+    reads.push(botStore.activeBot.getBlacklist());
   }
+  loadError.value = (await Promise.allSettled(reads)).some(
+    (result) => result.status === 'rejected',
+  );
 }
 
 function addBlacklistPair() {
@@ -42,12 +48,23 @@ function deletePairs() {
   blacklistSelect.value = [];
 }
 onMounted(() => {
-  initBlacklist();
+  void initBlacklist();
 });
 </script>
 
 <template>
   <div>
+    <UAlert
+      v-if="loadError"
+      color="warning"
+      title="Bot pair lists unavailable"
+      description="The bot API did not return its pair lists. Check the bot connection and retry."
+      class="mb-2"
+    >
+      <template #actions>
+        <UButton color="neutral" size="sm" @click="initBlacklist">Retry</UButton>
+      </template>
+    </UAlert>
     <div>
       <h3 class="text-xl">Whitelist Methods</h3>
 

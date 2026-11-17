@@ -815,7 +815,6 @@ export function createBotSubStore(botId: string, botName: string) {
         lastLogs.value = data.logs;
         return Promise.resolve(data);
       } catch (error) {
-        console.error(error);
         return Promise.reject(error);
       }
     }
@@ -825,7 +824,6 @@ export function createBotSubStore(botId: string, botName: string) {
         const { data } = await api.get<PairlistsResponse>('/pairlists/available');
         return Promise.resolve(data);
       } catch (error) {
-        console.error(error);
         return Promise.reject(error);
       }
     }

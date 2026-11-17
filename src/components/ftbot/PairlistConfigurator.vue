@@ -6,6 +6,7 @@ const botStore = useBotStore();
 const pairlistStore = usePairlistConfigStore();
 
 const availablePairlists = ref<Pairlist[]>([]);
+const loadError = ref(false);
 const pairlistConfigsEl = ref<HTMLElement | null>(null);
 const availablePairlistsEl = ref<HTMLElement | null>(null);
 const selectedView = ref<'Config' | 'Results'>('Config');
@@ -50,16 +51,25 @@ useSortable(pairlistConfigsEl, pairlistStore.config.pairlists, {
   },
 });
 
-onMounted(async () => {
-  availablePairlists.value = (await botStore.activeBot.getPairlists()).pairlists.sort((a, b) =>
-    // Sort by is_pairlist_generator (by name), then by name.
-    // TODO: this might need to be improved
-    a.is_pairlist_generator === b.is_pairlist_generator
-      ? a.name.localeCompare(b.name)
-      : a.is_pairlist_generator
-        ? -1
-        : 1,
-  );
+async function refreshPairlists() {
+  loadError.value = false;
+  try {
+    availablePairlists.value = (await botStore.activeBot.getPairlists()).pairlists.sort((a, b) =>
+      // Sort by is_pairlist_generator (by name), then by name.
+      // TODO: this might need to be improved
+      a.is_pairlist_generator === b.is_pairlist_generator
+        ? a.name.localeCompare(b.name)
+        : a.is_pairlist_generator
+          ? -1
+          : 1,
+    );
+  } catch {
+    loadError.value = true;
+  }
+}
+
+onMounted(() => {
+  void refreshPairlists();
   pairlistStore.selectOrCreateConfig(
     pairlistStore.isSavedConfig(pairlistStore.configName) ? pairlistStore.configName : 'default',
   );
@@ -79,6 +89,17 @@ if (pairlistStore.whitelist.length > 0) {
 
 <template>
   <div class="grid grid-cols-1 lg:grid-cols-[auto_1fr_auto] px-3 mb-3 gap-3 w-full">
+    <UAlert
+      v-if="loadError"
+      color="warning"
+      title="Bot pairlist options unavailable"
+      description="The bot API did not return its pairlist options. Check the bot connection and retry."
+      class="lg:col-span-3"
+    >
+      <template #actions>
+        <UButton color="neutral" size="sm" @click="refreshPairlists">Retry</UButton>
+      </template>
+    </UAlert>
     <ul
       ref="availablePairlistsEl"
       class="divide-y border-x border-neutral-500 rounded-sm border-y divide-solid divide-neutral-500 min-w-72"
