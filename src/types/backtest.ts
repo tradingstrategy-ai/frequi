@@ -42,6 +42,7 @@ export interface PairResult {
   sharpe?: number;
   sortino?: number;
   sqn?: number;
+  p_value?: number;
 }
 
 // TODO: ExitReasonResult was replaced with PairResult on 2024-03-30.
@@ -184,6 +185,7 @@ export interface StrategyBacktestResult {
   sharpe?: number;
   calmar?: number;
   sqn?: number;
+  p_value?: number;
   expectancy?: number;
   expectancy_ratio?: number;
   wallet_stats?: {
@@ -308,4 +310,10 @@ export interface BacktestMarketChange {
   columns: string[];
   length: number;
   data: (number | string)[][];
+}
+
+export interface BacktestFreqAIInput {
+  enabled: boolean;
+  model: string;
+  identifier: string;
 }

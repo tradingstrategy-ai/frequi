@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('vue-router/auto-routes', () => ({
+  routes: [
+    { path: '/', component: { template: '<div />' } },
+    { path: '/trade', component: { template: '<div />' } },
+    { path: '/login', component: { template: '<div />' }, meta: { allowAnonymous: true } },
+  ],
+  handleHotUpdate: vi.fn(),
+}));
+
 const guardMocks = vi.hoisted(() => ({
   initBots: vi.fn(),
   useBotStore: vi.fn(() => ({ hasBots: false })),
@@ -16,7 +25,7 @@ import router from '@/router';
 
 describe('comparison route guard', () => {
   beforeEach(async () => {
-    await router.push('/');
+    await router.push('/compare/overview');
     guardMocks.initBots.mockClear();
   });
 

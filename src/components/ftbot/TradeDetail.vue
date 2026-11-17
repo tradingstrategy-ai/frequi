@@ -130,11 +130,15 @@ const { showTradeCustomData } = useTradeCustomData();
         <ValuePair description="Direction">
           {{ trade.is_short ? 'short' : 'long' }} - {{ trade.leverage }}x
         </ValuePair>
-        <ValuePair v-if="trade.funding_fees !== undefined" description="Funding fees">
-          {{ formatPrice(trade.funding_fees) }}
+        <ValuePair
+          v-if="trade.funding_fees !== undefined"
+          description="Funding fees"
+          help="Positive funding_fees -> Trade has gained from fees. Negative funding_fees -> Trade had to pay the fees."
+        >
+          {{ formatDecimal(trade.funding_fees) }}
         </ValuePair>
         <ValuePair v-if="trade.interest_rate !== undefined" description="Interest rate">
-          {{ formatPrice(trade.interest_rate) }}
+          {{ formatDecimal(trade.interest_rate) }}
         </ValuePair>
         <ValuePair v-if="trade.liquidation_price !== undefined" description="Liquidation Price">
           {{ formatPrice(trade.liquidation_price) }}

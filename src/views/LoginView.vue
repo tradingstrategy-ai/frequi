@@ -37,7 +37,7 @@ function relogin(bot: AuthStorageWithBotId) {
 function continueToTarget() {
   const target = typeof route.query.redirect === 'string' ? route.query.redirect : '/';
   const resolved = router.resolve({ path: target });
-  router.push(resolved.name === '404' || resolved.path === '/login' ? '/' : resolved.path);
+  router.push(resolved.name === '/[...path]' || resolved.path === '/login' ? '/' : resolved.path);
 }
 
 async function connectAll() {

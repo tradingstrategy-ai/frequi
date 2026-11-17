@@ -22,10 +22,6 @@ import { seedDemoPresetBots } from '@/composables/loginInfo';
 import { connectRegistryBots, startsSelected } from '@/composables/dashboardRegistry';
 const AUTH_SELECTED_BOT = 'ftSelectedBot';
 
-// Import axios for type inference only
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import axios from 'axios';
-
 export type BotSubStore = ReturnType<typeof createBotSubStore>;
 
 export interface SubStores {

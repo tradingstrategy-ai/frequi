@@ -20,7 +20,9 @@ describe('reportSections API', () => {
     axiosMock.get.mockReset().mockImplementation(async () => ({ data: { ok: true } }));
   });
 
-  it('uses the same-origin comparison API with a long timeout for big reports', () => {
+  it('uses the same-origin comparison API with a long timeout for big reports', async () => {
+    vi.resetModules();
+    await import('@/composables/reportSections');
     expect(axiosMock.create).toHaveBeenCalledWith(
       expect.objectContaining({
         baseURL: '/api/comparison',

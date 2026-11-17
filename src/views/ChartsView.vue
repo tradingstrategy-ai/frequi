@@ -175,6 +175,7 @@ watch(
           </div>
           <TimeRangeSelect
             v-model="chartStore.timerange"
+            :can-use-time="false"
             class="col-span-3 md:col-span-2"
           ></TimeRangeSelect>
         </div>

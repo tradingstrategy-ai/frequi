@@ -86,8 +86,7 @@ const unmatched = (key: string): Row[] =>
   }));
 const delays = computed(() => {
   const d = data.value?.delays as
-    | { entry_minutes?: (number | null)[]; exit_minutes?: (number | null)[] }
-    | undefined;
+    { entry_minutes?: (number | null)[]; exit_minutes?: (number | null)[] } | undefined;
   return { entry: d?.entry_minutes ?? [], exit: d?.exit_minutes ?? [] };
 });
 </script>

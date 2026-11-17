@@ -31,8 +31,11 @@ import type {
   FreqAIModelListResult,
   HyperoptLossListResponse,
   HyperoptLossObj,
+  JobCategory,
   LockResponse,
   LogLine,
+  LookaheadAnalysis,
+  LookaheadAnalysisPayload,
   Markets,
   MarketsPayload,
   MixTagStats,
@@ -47,6 +50,8 @@ import type {
   PerformanceEntry,
   PlotConfig,
   ProfitStats,
+  RecursiveAnalysis,
+  RecursiveAnalysisPayload,
   StatusResponse,
   StrategyListResult,
   StrategyResult,
@@ -118,6 +123,7 @@ export function createBotSubStore(botId: string, botName: string) {
       evaluateFeatures(botState.value, botApiVersion.value),
     );
     const stakeCurrency = computed(() => botState.value?.stake_currency || '');
+    const proxyCoin = computed(() => botState.value?.proxy_coin || stakeCurrency.value);
     const stakeCurrencyDecimals = computed(() => botState.value?.stake_currency_decimals || 3);
     const isWebserverMode = computed(() => botState.value?.runmode === RunModes.WEBSERVER);
 
@@ -796,10 +802,7 @@ export function createBotSubStore(botId: string, botName: string) {
         botState.value = data;
         botStatusAvailable.value = true;
         startWebSocket();
-        if (isWebserverMode.value) {
-          const { recoverBgJobs } = useBackgroundJob();
-          recoverBgJobs(api, showAlert).then();
-        }
+        if (isWebserverMode.value) recoverBgJobs().then();
         return Promise.resolve(data);
       } catch (error) {
         return Promise.reject(error);
@@ -850,6 +853,9 @@ export function createBotSubStore(botId: string, botName: string) {
       }
     }
 
+    const backgroundJobs = ref<Record<string, BackgroundTaskStatus>>({});
+    const bgJobPolls = new Map<string, Promise<BackgroundTaskStatus>>();
+
     async function getBackgroundJobStatus(jobId: string) {
       try {
         const { data } = await api.get<BackgroundTaskStatus>(`/background/${jobId}`);
@@ -860,19 +866,108 @@ export function createBotSubStore(botId: string, botName: string) {
       }
     }
 
+    function pollBgJob(jobId: string, jobCategory: JobCategory): Promise<BackgroundTaskStatus> {
+      const existing = bgJobPolls.get(jobId);
+      if (existing) return existing;
+      if (!backgroundJobs.value[jobId]) {
+        backgroundJobs.value[jobId] = {
+          job_id: jobId,
+          job_category: jobCategory,
+          status: 'pending',
+          running: true,
+        };
+      }
+      const promise = new Promise<BackgroundTaskStatus>((resolve, reject) => {
+        const interval = window.setInterval(async () => {
+          try {
+            const status = await getBackgroundJobStatus(jobId);
+            backgroundJobs.value[jobId] = status;
+            if (!status.running) {
+              window.clearInterval(interval);
+              bgJobPolls.delete(jobId);
+              resolve(status);
+            }
+          } catch (error) {
+            window.clearInterval(interval);
+            bgJobPolls.delete(jobId);
+            showAlert('Failed to get background job status', 'error');
+            reject(error);
+          }
+        }, 1000);
+      });
+      bgJobPolls.set(jobId, promise);
+      return promise;
+    }
+
+    async function recoverBgJobs() {
+      try {
+        const { data } = await api.get<BackgroundTaskStatus[]>('/background');
+        for (const job of data) {
+          backgroundJobs.value[job.job_id] = job;
+          if (job.running) pollBgJob(job.job_id, job.job_category);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    async function clearBgJobs() {
+      if (botFeatures.value.backgroundJobDelete) {
+        try {
+          const { data } = await api.delete<BackgroundTaskStatus[]>('/background/clear');
+          backgroundJobs.value = Object.fromEntries(data.map((job) => [job.job_id, job]));
+          showAlert('All non-running background jobs cleared', 'success');
+        } catch (error) {
+          console.error(error);
+          showAlert('Failed to clear background jobs', 'error');
+        }
+        return;
+      }
+      for (const [jobId, job] of Object.entries(backgroundJobs.value)) {
+        if (!job.running) delete backgroundJobs.value[jobId];
+      }
+    }
+
     async function startDataDownload(payload: DownloadDataPayload) {
       try {
         const { data } = await api.post<DownloadDataPayload, AxiosResponse<BgTaskStarted>>(
           '/download_data',
           payload,
         );
-        const { startBgJob } = useBackgroundJob();
-        startBgJob(api, showAlert, data.job_id, 'download_data');
+        pollBgJob(data.job_id, 'download_data');
         return Promise.resolve(data);
       } catch (error) {
         console.error(error);
         return Promise.reject(error);
       }
+    }
+
+    async function startRecursiveAnalysis(payload: RecursiveAnalysisPayload) {
+      const { data } = await api.post<RecursiveAnalysisPayload, AxiosResponse<BgTaskStarted>>(
+        '/recursive_analysis',
+        payload,
+      );
+      pollBgJob(data.job_id, 'recursive_analysis');
+      return data;
+    }
+
+    async function getRecursiveAnalysisResult(jobId: string) {
+      const { data } = await api.get<RecursiveAnalysis>(`/recursive_analysis/${jobId}`);
+      return data;
+    }
+
+    async function startLookaheadAnalysis(payload: LookaheadAnalysisPayload) {
+      const { data } = await api.post<LookaheadAnalysisPayload, AxiosResponse<BgTaskStarted>>(
+        '/lookahead_analysis',
+        payload,
+      );
+      pollBgJob(data.job_id, 'lookahead_analysis');
+      return data;
+    }
+
+    async function getLookaheadAnalysisResult(jobId: string) {
+      const { data } = await api.get<LookaheadAnalysis>(`/lookahead_analysis/${jobId}`);
+      return data;
     }
 
     async function startBot() {
@@ -1491,10 +1586,12 @@ export function createBotSubStore(botId: string, botName: string) {
       backtestHistory,
       backtestHistoryList,
       sysInfo,
+      backgroundJobs,
       version,
       botApiVersion,
       botFeatures,
       stakeCurrency,
+      proxyCoin,
       stakeCurrencyDecimals,
       canRunBacktest,
       isWebserverMode,
@@ -1555,7 +1652,14 @@ export function createBotSubStore(botId: string, botName: string) {
       evaluatePairlist,
       getPairlistEvalResult,
       getBackgroundJobStatus,
+      pollBgJob,
+      recoverBgJobs,
+      clearBgJobs,
       startDataDownload,
+      startRecursiveAnalysis,
+      getRecursiveAnalysisResult,
+      startLookaheadAnalysis,
+      getLookaheadAnalysisResult,
       startBot,
       stopBot,
       stopBuy,

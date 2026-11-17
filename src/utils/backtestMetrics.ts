@@ -117,6 +117,9 @@ export function generateBacktestMetricRows(result: StrategyBacktestResult) {
       'System Quality Number (SQN)': formatNumber(result.sqn, 2),
     },
     {
+      'Mean profit p-value': formatNumber(result.p_value, 3),
+    },
+    {
       [`Expectancy ${result.expectancy_ratio ? '(ratio)' : ''}`]: `${
         result.expectancy
           ? result.expectancy_ratio
@@ -317,6 +320,7 @@ export const availableBacktestMetrics = ref([
   { field: 'sqn', header: 'SQN' },
   { field: 'cagr', header: 'Cagr' },
   { field: 'calmar', header: 'Calmar' },
+  { field: 'p_value', header: 'Mean profit p-value' },
   { field: 'expectancy', header: 'Expectancy' },
   { field: 'profit_factor', header: 'Profit Factor' },
   { field: 'sharpe', header: 'Sharpe' },

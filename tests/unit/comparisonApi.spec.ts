@@ -22,6 +22,8 @@ describe('comparisonApi', () => {
   });
 
   it('uses a same-origin comparison API client without cross-origin credentials', async () => {
+    vi.resetModules();
+    await import('@/composables/comparisonApi');
     // The module creates one client at import time; assert the configured origin
     // and credentials rather than depending on an absolute deployment URL.
     expect(axiosMock.create).toHaveBeenCalledWith(

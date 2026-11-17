@@ -34,7 +34,11 @@ export type FeatureKey =
   | 'forceExitWithPrice'
   | 'downloadDataPrepend'
   | 'strategyParameters'
-  | 'walletChange';
+  | 'walletChange'
+  | 'recursiveAnalysis'
+  | 'lookaheadAnalysis'
+  | 'backgroundJobDelete'
+  | 'timerangeWithTime';
 
 export type BotFeatures = Record<FeatureKey, boolean>;
 
@@ -77,4 +81,8 @@ export const FEATURES: Record<FeatureKey, FeatureConfig> = {
   downloadDataPrepend: { minVersion: 2.46, description: 'Prepend data when downloading' },
   strategyParameters: { minVersion: 2.47, description: 'Strategy parameters' },
   walletChange: { minVersion: 2.48, description: 'Wallet change data endpoint' },
+  recursiveAnalysis: { minVersion: 2.49, description: 'Recursive analysis' },
+  lookaheadAnalysis: { minVersion: 2.49, description: 'Lookahead analysis' },
+  backgroundJobDelete: { minVersion: 2.49, description: 'Delete background jobs' },
+  timerangeWithTime: { minVersion: 2.5, description: 'Timerange with hour/minute precision' },
 };
