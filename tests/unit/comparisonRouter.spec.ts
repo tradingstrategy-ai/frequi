@@ -4,7 +4,7 @@ vi.mock('vue-router/auto-routes', () => ({
   routes: [
     { path: '/', component: { template: '<div />' } },
     { path: '/trade', component: { template: '<div />' } },
-    { path: '/login', component: { template: '<div />' }, meta: { allowAnonymous: true } },
+    { path: '/login', component: { template: '<div />' } },
   ],
   handleHotUpdate: vi.fn(),
 }));
@@ -47,5 +47,10 @@ describe('comparison route guard', () => {
     await router.push('/trade');
     expect(router.currentRoute.value.path).toBe('/login');
     expect(guardMocks.initBots).toHaveBeenCalled();
+  });
+
+  it('allows the login page itself when no bot is connected', async () => {
+    await router.push('/login');
+    expect(router.currentRoute.value.path).toBe('/login');
   });
 });

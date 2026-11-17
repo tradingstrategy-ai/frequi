@@ -70,6 +70,7 @@ router.beforeEach((to) => {
   }
   initBots();
   const botStore = useBotStore();
+  if (to.path === '/login') return true;
   if (!to.meta?.allowAnonymous && !botStore.hasBots) {
     return { path: '/login', query: { redirect: to.fullPath } };
   }

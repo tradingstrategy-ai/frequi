@@ -1,4 +1,6 @@
 <script setup lang="ts">
+definePage({ meta: { allowAnonymous: true } });
+
 import { useDashboardRegistry } from '@/composables/dashboardRegistry';
 import type { AuthStorageWithBotId } from '@/types';
 import type { PresetBotDefinition } from '@/config/presetBots';
