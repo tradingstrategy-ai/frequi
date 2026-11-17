@@ -1,10 +1,18 @@
 <script setup lang="ts">
-import type { ChartSliderPosition, IndicatorConfig, PairHistory, PlotConfig, Trade } from '@/types';
+import type {
+  BtMarker,
+  ReportIndicatorLine,
+  ChartSliderPosition,
+  IndicatorConfig,
+  PairHistory,
+  PlotConfig,
+  Trade,
+} from '@/types';
 import { ChartType } from '@/types';
 
 import ECharts from 'vue-echarts';
 
-import type { EChartsOption, ScatterSeriesOption } from 'echarts';
+import type { EChartsOption, LineSeriesOption, ScatterSeriesOption, SeriesOption } from 'echarts';
 import { BarChart, CandlestickChart, LineChart, ScatterChart } from 'echarts/charts';
 import {
   AxisPointerComponent,
@@ -54,6 +62,11 @@ use([
 
 const props = defineProps<{
   trades: Trade[];
+  btMarkers?: BtMarker[];
+  /** Live fills as the comparison report recorded them (drawn next to BT fills). */
+  liveMarkers?: BtMarker[];
+  /** Strategy indicator lines from the comparison report (entry levels, ATR bands). */
+  indicatorLines?: ReportIndicatorLine[];
   dataset: PairHistory;
   heikinAshi: boolean;
   showMarkArea: boolean;
@@ -110,6 +123,161 @@ const hasData = computed(() => {
 const filteredTrades = computed(() => {
   return props.trades.filter((item: Trade) => item.pair === pair.value);
 });
+
+function generateBtMarkerSeries(markers: BtMarker[]): ScatterSeriesOption {
+  const markerData = markers.map((marker) => {
+    const isEntry = marker.type === 'entry';
+    const isLong = marker.direction === 'LONG';
+    const rotation = marker.direction === null ? 90 : isLong ? 0 : 180;
+    return [
+      new Date(marker.date).getTime(),
+      marker.price,
+      isEntry ? 'BT entry' : 'BT exit',
+      marker.is_matched ? '#2563eb' : '#93c5fd',
+      isEntry ? rotation : marker.direction === null ? 90 : isLong ? 180 : 0,
+      marker.is_matched ? 0.95 : 0.55,
+      marker.label?.replace(/\n/g, ' · ') ??
+        `${marker.direction ?? 'Unknown'} ${marker.type}${marker.is_matched ? '' : ' (BT only)'}`,
+    ];
+  });
+
+  return {
+    name: 'BT Overlay',
+    type: 'scatter',
+    xAxisIndex: 0,
+    yAxisIndex: 0,
+    encode: {
+      x: 0,
+      y: 1,
+      label: 2,
+      tooltip: 6,
+    },
+    label: {
+      show: false,
+    },
+    itemStyle: {
+      color: (value) => (value.data ? value.data[3] : '#2563eb'),
+      borderColor: '#1d4ed8',
+      borderWidth: 1,
+      opacity: 0.9,
+    },
+    symbol: 'triangle',
+    symbolRotate: (value) => value[4],
+    symbolSize: 12,
+    data: markerData,
+  };
+}
+
+/**
+ * Keep only report points inside the loaded candles: report series and fills span the
+ * whole report window (months), and points outside the candles would widen the x axis
+ * until the candles are a sliver at its edge.
+ */
+function inCandleRange(timestamp: number | null): boolean {
+  if (timestamp === null || !Number.isFinite(timestamp)) return false;
+  const start = props.dataset.data_start_ts ?? -Infinity;
+  const stop = (props.dataset.data_stop_ts ?? Infinity) + (props.dataset.timeframe_ms ?? 0);
+  return timestamp >= start && timestamp <= stop;
+}
+
+function markersInRange(markers: BtMarker[] | undefined): BtMarker[] {
+  return (markers ?? []).filter((marker) => inCandleRange(new Date(marker.date).getTime()));
+}
+
+const INDICATOR_COLORS = [
+  '#e879f9',
+  '#facc15',
+  '#2dd4bf',
+  '#fb923c',
+  '#a78bfa',
+  '#f472b6',
+  '#4ade80',
+];
+
+/** One report indicator as a thin line on the price axis (nulls split segments). */
+function generateIndicatorSeries(line: ReportIndicatorLine, index: number): LineSeriesOption {
+  return {
+    name: line.name,
+    type: 'line',
+    xAxisIndex: 0,
+    yAxisIndex: 0,
+    showSymbol: false,
+    connectNulls: false,
+    lineStyle: {
+      width: 1.2,
+      color: line.color ?? INDICATOR_COLORS[index % INDICATOR_COLORS.length],
+      type: line.dash && line.dash !== 'solid' ? 'dashed' : 'solid',
+    },
+    itemStyle: { color: line.color ?? INDICATOR_COLORS[index % INDICATOR_COLORS.length] },
+    data: line.x
+      .map((x, i): [number | null, number | null] => [
+        x ? Date.parse(`${x}Z`) : null,
+        line.y[i] ?? null,
+      ])
+      // A null-x point is a deliberate gap: keep it as a break in the line.
+      .filter(([x]) => x === null || inCandleRange(x))
+      .map(([x, y]) => (x === null ? [null, null] : [x, y])),
+  };
+}
+
+/** Colours of an open position's levels: entry and take profit. */
+const POSITION_LEVEL_COLORS = { entry: '#94a3b8', target: '#22c55e' };
+
+/**
+ * An open position's entry and take-profit levels as horizontal lines running from its open
+ * to the last candle, labelled with the strategy that holds it. The stop loss is not drawn
+ * here: FreqUI already marks an open trade's `stop_loss_abs`. A level is drawn only when the
+ * venue reports one resting.
+ */
+function generatePositionLevelSeries(trade: Trade): LineSeriesOption[] {
+  const start = trade.open_timestamp;
+  const end = (props.dataset.data_stop_ts ?? start) + (props.dataset.timeframe_ms ?? 0);
+  const tag = trade.strategy ? `${trade.strategy.replace(/-\d+$/, '')} ` : '';
+  const levels: [string, number | undefined, string, 'solid' | 'dashed'][] = [
+    ['entry', trade.open_rate, POSITION_LEVEL_COLORS.entry, 'dashed'],
+    ['take profit', trade.take_profit_abs, POSITION_LEVEL_COLORS.target, 'solid'],
+  ];
+  return levels
+    .filter(([, price]) => typeof price === 'number' && price > 0)
+    .map(([label, price, color, type]) => ({
+      name: `${tag}${label} ${price}`,
+      type: 'line',
+      xAxisIndex: 0,
+      yAxisIndex: 0,
+      showSymbol: false,
+      lineStyle: { width: 1.2, color, type },
+      itemStyle: { color },
+      data: [
+        [Math.max(start, props.dataset.data_start_ts ?? start), price as number],
+        [end, price as number],
+      ],
+    }));
+}
+
+/** Report live fills: hollow diamonds, so they read apart from FreqUI's own trade arrows. */
+function generateLiveMarkerSeries(markers: BtMarker[]): ScatterSeriesOption {
+  return {
+    name: 'Live (report)',
+    type: 'scatter',
+    xAxisIndex: 0,
+    yAxisIndex: 0,
+    encode: { x: 0, y: 1, tooltip: 2 },
+    symbol: 'diamond',
+    symbolSize: 11,
+    itemStyle: {
+      color: 'rgba(0,0,0,0)',
+      borderColor: '#f97316',
+      borderWidth: 2,
+      opacity: 0.95,
+    },
+    data: markers.map((marker) => [
+      new Date(marker.date).getTime(),
+      marker.price,
+      marker.label?.replace(/\n/g, ' · ') ??
+        `Live ${marker.direction ?? ''} ${marker.type}${marker.is_matched ? '' : ' (live only)'}`,
+    ]),
+  };
+}
 
 const chartTitle = computed(() => {
   return `${strategy.value} - ${pair.value} - ${timeframe.value}`;
@@ -571,6 +739,14 @@ function updateChart(initial = false) {
   const nameTrades = 'Trades';
   // Insert trades into legend, after the default columns
   addLegend(nameTrades, 4);
+  const btInRange = markersInRange(props.btMarkers);
+  const liveInRange = markersInRange(props.liveMarkers);
+  if (btInRange.length > 0) {
+    addLegend('BT Overlay', 5);
+  }
+  if (liveInRange.length > 0) {
+    addLegend('Live (report)', 6);
+  }
   const tradesSeries: ScatterSeriesOption = generateTradeSeries(
     nameTrades,
     props.theme,
@@ -579,6 +755,24 @@ function updateChart(initial = false) {
   );
   if (Array.isArray(options.series)) {
     options.series.push(tradesSeries);
+    if (btInRange.length > 0) {
+      options.series.push(generateBtMarkerSeries(btInRange));
+    }
+    if (liveInRange.length > 0) {
+      options.series.push(generateLiveMarkerSeries(liveInRange));
+    }
+    (props.indicatorLines ?? []).forEach((line, index) => {
+      addLegend(line.name);
+      (options.series as SeriesOption[]).push(generateIndicatorSeries(line, index));
+    });
+    // Nautilus positions only: a Freqtrade bot's own stop is already part of its trade.
+    filteredTrades.value
+      .filter((trade) => trade.is_open && trade.nt_trade_id !== undefined)
+      .flatMap(generatePositionLevelSeries)
+      .forEach((series) => {
+        addLegend(String(series.name));
+        (options.series as SeriesOption[]).push(series);
+      });
   }
 
   // Merge this into original data
@@ -733,7 +927,17 @@ watch([() => props.useUTC, () => props.theme, () => props.plotConfig], () =>
   initializeChartOptions(),
 );
 
-watch([() => props.dataset, () => props.heikinAshi, () => props.showMarkArea], () => updateChart());
+watch(
+  [
+    () => props.dataset,
+    () => props.heikinAshi,
+    () => props.showMarkArea,
+    () => props.btMarkers,
+    () => props.liveMarkers,
+    () => props.indicatorLines,
+  ],
+  () => updateChart(),
+);
 
 watch(
   () => props.sliderPosition,

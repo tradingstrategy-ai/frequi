@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { ChartSliderPosition, PairHistory, Trade } from '@/types';
+import { useComparisonStore } from '@/stores/comparisonStore';
+import { matchesStrategy, normalizeStrategy } from '@/utils/strategies';
 
 const props = withDefaults(
   defineProps<{
@@ -28,6 +30,7 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore();
 const botStore = useBotStore();
 const plotStore = usePlotConfigStore();
+const comparisonStore = useComparisonStore();
 
 const dataset = computed((): PairHistory | undefined => {
   const firstpair = botStore.activeBot.plotMultiPairs[0];
@@ -36,6 +39,8 @@ const dataset = computed((): PairHistory | undefined => {
   }
   return botStore.activeBot.candleData[`${firstpair}__${props.timeframe}`]?.data;
 });
+/** The bot recorded strategy indicators for this pair (Nautilus telemetry via the gateway). */
+const hasStrategyIndicators = computed(() => (dataset.value?.indicator_columns?.length ?? 0) > 0);
 
 const datasetColumns = computed(() =>
   dataset.value ? (dataset.value.all_columns ?? dataset.value.columns) : [],
@@ -50,6 +55,73 @@ function showConfigurator() {
 
 const isSinglePairView = computed(() => botStore.activeBot.plotMultiPairs.length === 1);
 
+interface StrategyOption {
+  /** The normalised key the chart filters by; '' is every strategy. */
+  value: string;
+  label: string;
+  /** Every normalised spelling of this strategy (a report id, its class, a live strategy id). */
+  names: string[];
+}
+
+/** Sentinel for "every strategy": a select item cannot have an empty value. */
+const ALL_STRATEGIES = '__all__';
+
+/**
+ * Strategies the Chart page can show for this pair: the bot's own strategies (from its
+ * reports) plus any strategy that traded the pair without one.
+ */
+const strategyOptions = computed<StrategyOption[]>(() => {
+  const info = comparisonStore.supportedBots.find((b) => b.bot_id === botStore.selectedBot);
+  const options = new Map<string, StrategyOption>();
+  for (const sleeve of info?.sleeve_info ?? []) {
+    const value = normalizeStrategy(sleeve.id.replace('WIND_DOWN:', ''));
+    options.set(value, { value, label: sleeve.label, names: [...sleeve.match, value] });
+  }
+  const pair = botStore.activeBot.plotMultiPairs[0];
+  for (const trade of props.trades) {
+    if (trade.pair !== pair || !trade.strategy) continue;
+    const key = normalizeStrategy(trade.strategy);
+    const known = [...options.values()].find((o) => o.names.includes(key));
+    if (!known) {
+      options.set(key, { value: key, label: trade.strategy.replace(/-\d+$/, ''), names: [key] });
+    }
+  }
+  return [...options.values()];
+});
+const showStrategySelect = computed(
+  () => !botStore.activeBot.isWebserverMode && strategyOptions.value.length > 1,
+);
+const strategyItems = computed(() => [
+  { label: 'All strategies', value: ALL_STRATEGIES },
+  ...strategyOptions.value.map((o) => ({ label: o.label, value: o.value })),
+]);
+/** The selected strategy as an option's own key ('' for all, or when it no longer exists). */
+const selectedStrategy = computed(() => {
+  const chosen = botStore.activeBot.chartStrategy;
+  return strategyOptions.value.find((o) => o.names.includes(chosen))?.value ?? '';
+});
+// A strategy picked on another pair that this pair does not have would still be sent with the
+// candle request while the chart filters by "all": clear it so both agree.
+watch(selectedStrategy, (value) => {
+  if (!value && botStore.activeBot.chartStrategy && strategyOptions.value.length > 0) {
+    botStore.activeBot.chartStrategy = '';
+  }
+});
+const strategySelection = computed({
+  get: () => selectedStrategy.value || ALL_STRATEGIES,
+  set: (value: string) => {
+    botStore.activeBot.chartStrategy = value === ALL_STRATEGIES ? '' : value;
+  },
+});
+/** Live trades of the selected strategy; every trade when none is selected. */
+const chartTrades = computed(() => {
+  const names = strategyOptions.value.find((o) => o.value === selectedStrategy.value)?.names;
+  if (!selectedStrategy.value || !names) return props.trades;
+  return props.trades.filter((trade) =>
+    names.some((name) => matchesStrategy(trade.strategy, name)),
+  );
+});
+
 watch(
   () => botStore.activeBot.selectedPair,
   () => {
@@ -58,6 +130,7 @@ watch(
 );
 
 onMounted(() => {
+  comparisonStore.ensureComparisonBots().then();
   if (botStore.activeBot.selectedPair) {
     botStore.activeBot.plotMultiPairs = [botStore.activeBot.selectedPair];
   } else if (props.availablePairs.length > 0) {
@@ -115,6 +188,46 @@ watch(
   },
 );
 
+// The Chart page knows the bot's timeframe only once its config has loaded: fetch then.
+watch(
+  () => props.timeframe,
+  (timeframe, previous) => {
+    if (timeframe && timeframe !== previous) refresh();
+  },
+);
+
+// A different strategy brings different indicators with the candles: fetch them again.
+watch(
+  () => botStore.activeBot.chartStrategy,
+  () => {
+    overlayRetries = 0;
+    refresh();
+  },
+);
+
+/** Delay between automatic refreshes while the gateway computes a strategy's indicators. */
+const OVERLAY_RETRY_MS = 8000;
+/** Most automatic refreshes for one pending evaluation (about 3 minutes; a strategy fitted on
+ * ~560 days of hourly data, SigCombo, takes ~100 s the first time). */
+const OVERLAY_MAX_RETRIES = 23;
+let overlayRetries = 0;
+let overlayTimer: ReturnType<typeof setTimeout> | undefined;
+
+// The candles arrive before a strategy's first evaluation finishes (status PENDING): fetch them
+// again until its indicators are there, so the user does not have to press refresh.
+watch(dataset, (current) => {
+  clearTimeout(overlayTimer);
+  if (current?.overlay_meta?.status !== 'PENDING') {
+    overlayRetries = 0;
+    return;
+  }
+  if (overlayRetries >= OVERLAY_MAX_RETRIES) return;
+  overlayRetries += 1;
+  overlayTimer = setTimeout(refresh, OVERLAY_RETRY_MS);
+});
+
+onBeforeUnmount(() => clearTimeout(overlayTimer));
+
 watch(
   () => settingsStore.multiPairSelection,
   () => {
@@ -164,6 +277,15 @@ const singlePairSelection = computed({
             virtualize
             @input="refresh"
           />
+          <USelect
+            v-if="showStrategySelect"
+            v-model="strategySelection"
+            :items="strategyItems"
+            class="md:w-56 w-full"
+            size="md"
+            data-testid="chart-strategy-selector"
+            title="Show one strategy's fills, indicators and report overlay"
+          />
           <UButton
             title="Refresh chart"
             color="neutral"
@@ -181,6 +303,19 @@ const singlePairSelection = computed({
           </BaseCheckbox>
           <BaseCheckbox v-model="settingsStore.useHeikinAshiCandles">
             <span class="text-nowrap">Heikin Ashi</span>
+          </BaseCheckbox>
+          <BaseCheckbox
+            v-if="hasStrategyIndicators"
+            v-model="settingsStore.showStrategyIndicators"
+            title="Indicator values this bot's strategies recorded live, bar by bar"
+          >
+            <span class="text-nowrap">Strategy indicators</span>
+          </BaseCheckbox>
+          <BaseCheckbox
+            v-if="comparisonStore.isSupportedBot(botStore.selectedBot)"
+            v-model="settingsStore.showBtTradeOverlay"
+          >
+            <span class="text-nowrap">Show BT vs live fills</span>
           </BaseCheckbox>
 
           <div class="me-0 md:me-1 flex grow">
@@ -209,7 +344,8 @@ const singlePairSelection = computed({
           :pair="pair"
           :historic-view="botStore.activeBot.isWebserverMode"
           :timeframe="timeframe"
-          :trades="props.trades"
+          :trades="chartTrades"
+          :strategy-key="selectedStrategy"
           :slider-position="props.sliderPosition"
           :is-single-pair-view="isSinglePairView"
           @refresh-data="refresh()"

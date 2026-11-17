@@ -122,6 +122,16 @@ const navItems = computed<NavItem[]>(() => [
     icon: 'i-mdi-chart-line',
   },
   {
+    label: 'Compare',
+    to: '/compare/overview',
+    icon: 'i-mdi-compare-horizontal',
+  },
+  {
+    label: 'Reports',
+    to: '/reports',
+    icon: 'i-mdi-file-chart-outline',
+  },
+  {
     label: 'Logs',
     to: '/logs',
     icon: 'i-mdi-format-list-bulleted',

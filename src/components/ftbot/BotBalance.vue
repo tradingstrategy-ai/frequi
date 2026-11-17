@@ -5,6 +5,7 @@ import type { BalanceValues } from '@/types';
 const botStore = useBotStore();
 const hideSmallBalances = ref(true);
 const showBotOnly = ref(true);
+const loadError = ref(false);
 
 const smallBalance = computed<number>(() => {
   return Number((1.1 ** botStore.activeBot.stakeCurrencyDecimals).toFixed(8));
@@ -76,7 +77,12 @@ const tableFields = computed(() => {
 });
 
 async function refreshBalance() {
-  botStore.activeBot.getBalance();
+  loadError.value = false;
+  try {
+    await botStore.activeBot.getBalance();
+  } catch {
+    loadError.value = true;
+  }
 }
 
 const tableColumns = computed(() => {
@@ -120,6 +126,13 @@ onMounted(() => {
 
 <template>
   <div>
+    <UAlert
+      v-if="loadError"
+      color="warning"
+      title="Bot balance unavailable"
+      description="The bot API did not return a balance. Check the bot connection and retry."
+      class="mb-2"
+    />
     <div class="flex flex-wrap flex-row mb-2 justify-end items-center">
       <label class="text-xl ms-1 me-auto mb-0">{{ showBotOnly ? 'Bot' : 'Account' }} Balance</label>
       <div class="flex flex-row gap-1">
@@ -139,8 +152,8 @@ onMounted(() => {
         <UButton color="neutral" icon="mdi:refresh" @click="refreshBalance" />
       </div>
     </div>
-    <BalanceChart v-if="balanceCurrencies" :currencies="chartValues" />
-    <div>
+    <BalanceChart v-if="!loadError && balanceCurrencies" :currencies="chartValues" />
+    <div v-if="!loadError">
       <p v-if="botStore.activeBot.balance.note">
         <strong>{{ botStore.activeBot.balance.note }}</strong>
       </p>

@@ -3,6 +3,7 @@ import { TimeSummaryOptions } from '@/types';
 
 const botStore = useBotStore();
 const settingsStore = useSettingsStore();
+const loadError = ref(false);
 
 const props = defineProps<{
   multiBotView?: boolean;
@@ -58,16 +59,21 @@ const selectedStatsSorted = computed(() => {
   };
 });
 
-function refreshSummary() {
-  if (props.multiBotView) {
-    botStore.allGetTimeSummary(settingsStore.timeProfitPeriod);
-  } else {
-    botStore.activeBot.getTimeSummary(settingsStore.timeProfitPeriod);
+async function refreshSummary() {
+  loadError.value = false;
+  try {
+    if (props.multiBotView) {
+      await botStore.allGetTimeSummary(settingsStore.timeProfitPeriod);
+    } else {
+      await botStore.activeBot.getTimeSummary(settingsStore.timeProfitPeriod);
+    }
+  } catch {
+    loadError.value = true;
   }
 }
 
 onMounted(() => {
-  refreshSummary();
+  void refreshSummary();
 });
 
 const tableColumns = computed(() => {
@@ -89,13 +95,24 @@ const tableColumns = computed(() => {
 watch(
   () => settingsStore.timeProfitPeriod,
   () => {
-    refreshSummary();
+    void refreshSummary();
   },
 );
 </script>
 
 <template>
   <div class="flex flex-col h-full">
+    <UAlert
+      v-if="loadError"
+      color="warning"
+      title="Profit history unavailable"
+      description="The bot API did not return its profit history. Check the bot connection and retry."
+      class="mb-2"
+    >
+      <template #actions>
+        <UButton color="neutral" size="sm" @click="refreshSummary">Retry</UButton>
+      </template>
+    </UAlert>
     <div v-if="!props.multiBotView" class="mb-2">
       <h3 class="me-auto inline text-xl">{{ hasWeekly ? 'Period' : 'Daily' }} Breakdown</h3>
       <UButton class="float-end" color="neutral" icon="mdi:refresh" @click="refreshSummary" />

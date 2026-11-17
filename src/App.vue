@@ -1,9 +1,16 @@
 <script setup lang="ts">
+import { prefetchRoutePages } from '@/router';
+
 const settingsStore = useSettingsStore();
 const colorStore = useColorStore();
 onMounted(() => {
   setTimezone(settingsStore.timezone);
   colorStore.updateProfitLossColor();
+  // Start only after the initial page has loaded. Fetching every lazy route
+  // during mount can occupy all browser connections and delay DOMContentLoaded.
+  window.addEventListener('load', () => window.setTimeout(prefetchRoutePages, 2000), {
+    once: true,
+  });
 });
 watch(
   () => settingsStore.timezone,
@@ -18,6 +25,7 @@ watch(
   <UApp>
     <div id="app" class="flex flex-col h-dvh" :style="colorStore.cssVars">
       <NavBar />
+      <ReportsAuthBanner />
       <BodyLayout class="grow overflow-auto" />
       <NavFooter />
     </div>

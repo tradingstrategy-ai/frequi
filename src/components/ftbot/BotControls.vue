@@ -66,7 +66,15 @@ async function handleForceEntry() {
 </script>
 
 <template>
-  <div class="flex flex-row gap-1">
+  <div
+    v-if="botStore.activeBot.isReadOnly"
+    class="flex flex-row items-center gap-2 text-sm text-surface-500"
+    data-testid="read-only-controls"
+  >
+    <UBadge color="neutral" variant="outline" icon="mdi:lock-outline">Read-only</UBadge>
+    <span>Trading controls are disabled for this bot in the dashboard.</span>
+  </div>
+  <div v-else class="flex flex-row gap-1">
     <UButton
       size="xl"
       color="neutral"

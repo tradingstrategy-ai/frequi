@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import type { ChartSliderPosition, PairHistory, Trade } from '@/types';
+import type { BtMarker, ChartSliderPosition, PairHistory, PlotConfig, Trade } from '@/types';
 import { LoadingStatus } from '@/types';
+import { useComparisonStore } from '@/stores/comparisonStore';
+import ReportFigure from '@/components/comparison/report/ReportFigure.vue';
+import { normalizeStrategy } from '@/utils/strategies';
 
 const props = withDefaults(
   defineProps<{
@@ -9,6 +12,8 @@ const props = withDefaults(
     timeframe: string;
     historicView?: boolean;
     pair?: string;
+    /** Strategy shown (a normalised key, see `normalizeStrategy`); '' shows every strategy. */
+    strategyKey?: string;
     sliderPosition?: ChartSliderPosition;
     isSinglePairView?: boolean;
   }>(),
@@ -16,6 +21,7 @@ const props = withDefaults(
     trades: () => [],
     historicView: false,
     pair: '',
+    strategyKey: '',
     sliderPosition: undefined,
     isSinglePairView: true,
   },
@@ -29,6 +35,7 @@ const settingsStore = useSettingsStore();
 const colorStore = useColorStore();
 const botStore = useBotStore();
 const plotStore = usePlotConfigStore();
+const comparisonStore = useComparisonStore();
 
 const dataset = computed((): PairHistory | undefined => {
   if (props.historicView) {
@@ -71,6 +78,103 @@ const noDatasetText = computed((): string => {
   }
 });
 
+const comparisonCapable = computed(() => comparisonStore.isSupportedBot(botStore.selectedBot));
+
+const btMarkers = computed<BtMarker[]>(() => {
+  if (!settingsStore.showBtTradeOverlay || !comparisonCapable.value || !props.pair) {
+    return [];
+  }
+  return (
+    comparisonStore.getCachedCandles(
+      botStore.selectedBot,
+      props.pair,
+      props.timeframe,
+      props.strategyKey,
+    )?.bt_markers ?? []
+  );
+});
+
+const liveMarkers = computed<BtMarker[]>(() => {
+  if (!settingsStore.showBtTradeOverlay || !comparisonCapable.value || !props.pair) {
+    return [];
+  }
+  return (
+    comparisonStore.getCachedCandles(
+      botStore.selectedBot,
+      props.pair,
+      props.timeframe,
+      props.strategyKey,
+    )?.live_markers ?? []
+  );
+});
+
+const cachedCandles = computed(() =>
+  settingsStore.showBtTradeOverlay && comparisonCapable.value && props.pair
+    ? comparisonStore.getCachedCandles(
+        botStore.selectedBot,
+        props.pair,
+        props.timeframe,
+        props.strategyKey,
+      )
+    : undefined,
+);
+/** The strategy's indicator lines from the report's overlay chart for this pair. */
+const indicatorLines = computed(() => cachedCandles.value?.indicators ?? []);
+/** The report's full overlay figure for this pair (candles, fills, all indicator panels). */
+const reportOverlay = computed(() => cachedCandles.value?.overlay ?? null);
+const showReportOverlay = ref(false);
+
+/** Where the selected strategy's indicators came from (Nautilus bots), shown above the chart. */
+const overlayNote = computed(() => {
+  const meta = dataset.value?.overlay_meta;
+  if (!meta || !settingsStore.showStrategyIndicators) return '';
+  if (meta.status !== 'OK')
+    return `${meta.strategy ?? 'Strategy'} indicators: ${meta.reason ?? meta.status}`;
+  return `${meta.strategy} indicators, ${meta.config_source}`;
+});
+
+/**
+ * The plot config the chart draws: the user's, plus the strategy indicators a Nautilus
+ * bot recorded live (shipped with its candles by the dashboard gateway) when shown.
+ */
+const effectivePlotConfig = computed<PlotConfig>(() => {
+  const telemetry = dataset.value?.plot_config;
+  if (!settingsStore.showStrategyIndicators || !telemetry) return plotStore.plotConfig;
+  const mine = onlyStrategyColumns(telemetry);
+  return {
+    ...plotStore.plotConfig,
+    main_plot: { ...mine.main_plot, ...plotStore.plotConfig.main_plot },
+    subplots: { ...mine.subplots, ...plotStore.plotConfig.subplots },
+  };
+});
+
+/**
+ * The recorded indicators of the selected strategy only.
+ *
+ * With several strategies recording, the gateway names each column `<Strategy>.<indicator>`;
+ * the unprefixed columns of a single-strategy bot belong to every selection.
+ */
+function onlyStrategyColumns(config: PlotConfig): PlotConfig {
+  if (!props.strategyKey) return config;
+  const keep = (column: string) =>
+    !column.includes('.') || normalizeStrategy(column.split('.')[0]) === props.strategyKey;
+  const subplots = Object.fromEntries(
+    Object.entries(config.subplots ?? {})
+      .map(([title, plots]) => [
+        title,
+        Object.fromEntries(Object.entries(plots).filter(([column]) => keep(column))),
+      ])
+      .filter(([, plots]) => Object.keys(plots as object).length > 0),
+  );
+  return {
+    ...config,
+    main_plot: Object.fromEntries(
+      Object.entries(config.main_plot ?? {}).filter(([column]) => keep(column)),
+    ),
+    subplots,
+  };
+}
+
 function refresh() {
   emit('refreshData', props.pair, plotStore.usedColumns);
 }
@@ -86,6 +190,19 @@ function assignFirstPair() {
   if (firstPair) {
     //props.pair = firstPair;
   }
+}
+
+async function loadBtMarkers() {
+  if (!settingsStore.showBtTradeOverlay || !comparisonCapable.value || !props.pair) {
+    return;
+  }
+  await comparisonStore.loadCandles(
+    botStore.selectedBot,
+    props.pair,
+    props.timeframe,
+    false,
+    props.strategyKey,
+  );
 }
 
 watch(
@@ -116,6 +233,23 @@ watch(
   () => props.timeframe,
   () => {
     refreshIfNecessary();
+    loadBtMarkers().then();
+  },
+);
+
+watch(
+  () => [
+    settingsStore.showBtTradeOverlay,
+    props.pair,
+    props.timeframe,
+    botStore.selectedBot,
+    props.strategyKey,
+  ],
+  () => {
+    loadBtMarkers().then();
+  },
+  {
+    immediate: true,
   },
 );
 </script>
@@ -150,9 +284,44 @@ watch(
           </div>
         </div>
       </div>
-      <div>
+      <div class="flex items-center gap-2">
+        <small
+          v-if="overlayNote"
+          class="text-xs text-surface-500"
+          data-testid="overlay-note"
+          title="Recomputed from venue candles with the bot's live parameters"
+          >{{ overlayNote }}</small
+        >
         {{ pair || 'Pair' }}
+        <UButton
+          v-if="reportOverlay"
+          size="xs"
+          variant="outline"
+          icon="mdi:chart-box-outline"
+          data-testid="open-report-overlay"
+          title="The daily report's chart for this pair: BT and live fills with every strategy indicator panel"
+          @click="showReportOverlay = true"
+        >
+          Report overlay
+        </UButton>
       </div>
+      <UModal
+        v-if="reportOverlay"
+        v-model:open="showReportOverlay"
+        :title="reportOverlay.title"
+        description="From the daily live-vs-backtest report. Indicators are recomputed from venue candles, so backtest and live share them."
+        :ui="{ content: 'max-w-[95vw] w-[95vw]' }"
+      >
+        <template #body>
+          <ReportFigure
+            :bot-id="botStore.selectedBot"
+            :report="reportOverlay.report"
+            :figure-id="reportOverlay.figure"
+            :title="reportOverlay.title"
+            :height="null"
+          />
+        </template>
+      </UModal>
       <div class="w-4 h-4">
         <UProgress v-if="isLoadingDataset" stroke-width="4" small label="Spinning" />
       </div>
@@ -163,7 +332,10 @@ watch(
           v-if="hasDataset && dataset"
           :dataset="dataset"
           :trades="trades"
-          :plot-config="plotStore.plotConfig"
+          :bt-markers="btMarkers"
+          :live-markers="liveMarkers"
+          :indicator-lines="indicatorLines"
+          :plot-config="effectivePlotConfig"
           :heikin-ashi="settingsStore.useHeikinAshiCandles"
           :show-mark-area="settingsStore.showMarkArea"
           :use-u-t-c="settingsStore.timezone === 'UTC'"

@@ -1,3 +1,4 @@
+import type { PlotConfig } from './plot';
 import type { ExchangeSelectPayload } from './types';
 
 export interface AvailablePairPayload {
@@ -79,6 +80,18 @@ export interface PairHistory {
   all_columns?: string[];
   /** Actual data */
   data: number[][];
+  /** Dashboard gateway: strategy indicator columns recorded live by a Nautilus bot. */
+  indicator_columns?: string[];
+  /** Dashboard gateway: how to draw ``indicator_columns`` (price levels vs subplots). */
+  /** The strategy whose overlay indicators the gateway added (Nautilus bots), and where its parameters came from. */
+  overlay_meta?: {
+    strategy: string | null;
+    status: string | null;
+    reason: string | null;
+    config_source: string | null;
+    last_candle: string | null;
+  } | null;
+  plot_config?: PlotConfig;
   annotations: MarkAnnotation[];
 
   length: number;

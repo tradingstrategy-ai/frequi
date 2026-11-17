@@ -1,14 +1,20 @@
 <script setup lang="ts">
 const botStore = useBotStore();
 const scrollContainer = ref<HTMLElement | null>(null);
+const loadError = ref(false);
 
-onMounted(async () => {
-  refreshLogs();
+onMounted(() => {
+  void refreshLogs();
 });
 
 async function refreshLogs() {
-  await botStore.activeBot.getLogs();
-  scrollToBottom();
+  loadError.value = false;
+  try {
+    await botStore.activeBot.getLogs();
+    scrollToBottom();
+  } catch {
+    loadError.value = true;
+  }
 }
 
 function getLogColor(logLevel: string) {
@@ -31,7 +37,19 @@ function scrollToBottom() {
 
 <template>
   <div class="flex h-full p-0 align-items-start">
+    <UAlert
+      v-if="loadError"
+      color="warning"
+      title="Bot logs unavailable"
+      description="The bot API did not return logs. Check the bot connection and retry."
+      class="w-full"
+    >
+      <template #actions>
+        <UButton color="neutral" size="sm" @click="refreshLogs">Retry</UButton>
+      </template>
+    </UAlert>
     <div
+      v-else
       ref="scrollContainer"
       class="border border-neutral-500 p-1 text-start text-sm pb-5 w-full h-full overflow-auto"
     >

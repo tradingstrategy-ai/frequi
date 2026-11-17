@@ -1,17 +1,22 @@
 FROM node:26.10.0-alpine AS ui-builder
 
 RUN mkdir /app \
-    && corepack enable
+    && npm install --global pnpm@11.6.0
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml /app/
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml /app/
 
 RUN apk add --update --no-cache g++ make git \
     && pnpm install --frozen-lockfile \
     && apk del g++ make
 
 COPY . /app
+
+# Deployment hosts and routes are baked in at build time and are never committed.
+# Pass them with --build-arg; unset values leave the matching feature off.
+ARG VITE_KNOWN_BOT_HOSTNAMES
+ARG VITE_KNOWN_BOT_PORTS
 
 RUN pnpm run build
 

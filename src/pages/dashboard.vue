@@ -2,6 +2,7 @@
 import type { GridItemData } from '@/types';
 
 const botStore = useBotStore();
+const loadError = ref(false);
 
 const layoutStore = useLayoutStore();
 const currentBreakpoint = ref('');
@@ -68,15 +69,33 @@ const responsiveGridLayouts = computed(() => {
   };
 });
 
-onMounted(async () => {
-  botStore.allGetDaily({ timescale: 30 });
-  // botStore.activeBot.getTrades();
-  botStore.activeBot.getOpenTrades();
-  botStore.activeBot.getProfit();
+async function refreshDashboard() {
+  loadError.value = false;
+  const reads = await Promise.allSettled([
+    botStore.allGetDaily({ timescale: 30 }),
+    botStore.activeBot.getOpenTrades(),
+    botStore.activeBot.getProfit(),
+  ]);
+  loadError.value = reads.some((result) => result.status === 'rejected');
+}
+
+onMounted(() => {
+  void refreshDashboard();
 });
 </script>
 
 <template>
+  <UAlert
+    v-if="loadError"
+    color="warning"
+    title="Some bot dashboard data is unavailable"
+    description="One or more bot APIs did not return dashboard data. Check the bot connections and retry."
+    class="mb-2"
+  >
+    <template #actions>
+      <UButton color="neutral" size="sm" @click="refreshDashboard">Retry</UButton>
+    </template>
+  </UAlert>
   <GridLayout
     class="h-full w-full"
     style="padding: 1px"

@@ -5,6 +5,7 @@ import type {
   BackgroundTaskStatus,
   BacktestHistoryEntry,
   BacktestMarketChange,
+  BacktestMetadataPatch,
   BacktestMetadataWithStrategyName,
   BacktestPayload,
   BacktestResult,
@@ -68,8 +69,12 @@ import { BacktestSteps, LoadingStatus, RunModes, TimeSummaryOptions } from '@/ty
 import type { FTWsMessage } from '@/types/wsMessageTypes';
 import { FtWsMessageTypes } from '@/types/wsMessageTypes';
 import { useWebSocket } from '@vueuse/core';
+import type { AxiosResponse } from 'axios';
+import axios from 'axios';
 
 import { evaluateFeatures } from '@/utils/features';
+import { normalizeStrategy } from '@/utils/strategies';
+import { findRegistryBot } from '@/composables/dashboardRegistry';
 
 export function createBotSubStore(botId: string, botName: string) {
   const loginInfo = useLoginInfo(botId);
@@ -95,6 +100,12 @@ export function createBotSubStore(botId: string, botName: string) {
     const detailTradeId = ref<number | null>(null);
     const selectedPair = ref('');
     const plotMultiPairs = ref<string[]>([]);
+    /**
+     * Strategy the Chart page shows (a normalised key, see `normalizeStrategy`); '' is every
+     * strategy. A multi-strategy bot trades one pair from several strategies, so the chart
+     * draws one strategy's fills and indicators at a time. Clicking a trade selects its own.
+     */
+    const chartStrategy = ref('');
 
     const historyTakesLonger = ref(false);
     const strategyList = ref<string[]>([]);
@@ -112,7 +123,6 @@ export function createBotSubStore(botId: string, botName: string) {
       evaluateFeatures(botState.value, botApiVersion.value),
     );
     const stakeCurrency = computed(() => botState.value?.stake_currency || '');
-    /** Coin the stake currency is actually held as - differs from stakeCurrency when a proxy coin is used. */
     const proxyCoin = computed(() => botState.value?.proxy_coin || stakeCurrency.value);
     const stakeCurrencyDecimals = computed(() => botState.value?.stake_currency_decimals || 3);
     const isWebserverMode = computed(() => botState.value?.runmode === RunModes.WEBSERVER);
@@ -123,6 +133,14 @@ export function createBotSubStore(botId: string, botName: string) {
         botState.value?.runmode === RunModes.LIVE || botState.value?.runmode === RunModes.DRY_RUN,
     );
     const timeframe = computed(() => botState.value?.timeframe || '');
+    /** Bot is behind the dashboard gateway's read-only guard (all NT bots; FT unless writes are on). */
+    const isReadOnly = computed(
+      () =>
+        botState.value?.dashboard_read_only === true ||
+        botState.value?.engine === 'NT' ||
+        // Before its state loads, a dashboard-gateway bot is read-only (the gateway is).
+        (!botState.value && findRegistryBot(botId)?.read_only === true),
+    );
 
     const openTradeCount = computed(() => openTrades.value.length);
 
@@ -164,9 +182,9 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function fetchPing() {
       try {
-        const result = await api<{ status: string }>('/ping');
+        const result = await api.get('/ping');
         const now = Date.now();
-        ping.value = `${result.status} ${now.toString()}`;
+        ping.value = `${result.data.status} ${now.toString()}`;
         setIsBotOnline(true);
         return Promise.resolve();
       } catch (error) {
@@ -176,7 +194,6 @@ export function createBotSubStore(botId: string, botName: string) {
     }
 
     function logout() {
-      closeWebSocket();
       loginInfo.logout();
     }
 
@@ -227,7 +244,11 @@ export function createBotSubStore(botId: string, botName: string) {
           updates.push(getWhitelist());
           updates.push(getBlacklist());
           updates.push(getCurrentStrategy());
-          await Promise.all(updates);
+          // One slow or failing read (a 503 while the gateway is still fetching) must neither
+          // abort the others nor escape as an unhandled rejection from the unawaited callers.
+          const results = await Promise.allSettled(updates);
+          const failed = results.filter((r) => r.status === 'rejected').length;
+          if (failed) console.warn(`${botName}: ${failed} of ${results.length} reads failed`);
           refreshRequired.value = false;
         } finally {
           refreshing.value = false;
@@ -241,10 +262,36 @@ export function createBotSubStore(botId: string, botName: string) {
       await getOpenTrades();
       await getLocks();
     }
+    /**
+     * Enough for the multi-bot comparison list (state, profit, balance) without the
+     * trade history, candles-adjacent data and white/blacklists a full refresh loads.
+     * Used for bots that are neither selected nor on screen.
+     */
+    async function refreshLight() {
+      if (refreshing.value) {
+        return;
+      }
+      try {
+        refreshing.value = true;
+        // A slow bot (some answer /balance in 20 s+) must not fail the whole light refresh.
+        await Promise.allSettled([getState(), getProfit(), getBalance()]);
+      } finally {
+        refreshing.value = false;
+      }
+    }
+    // A bot that becomes part of the multi-bot views needs its full data right away.
+    watch(isSelected, (selected) => {
+      if (selected && botStatusAvailable.value) {
+        refreshSlow(true).catch((error) => console.warn('refresh after selection failed', error));
+      }
+    });
 
     function setDetailTrade(trade: Trade | null) {
       detailTradeId.value = trade?.trade_id || null;
       selectedPair.value = trade ? trade.pair : selectedPair.value;
+      if (trade?.strategy) {
+        chartStrategy.value = normalizeStrategy(trade.strategy);
+      }
     }
 
     async function getTrades() {
@@ -252,11 +299,12 @@ export function createBotSubStore(botId: string, botName: string) {
         let totalTrades = 0;
         const pageLength = 500;
         const fetchTrades = async (limit: number, offset: number) => {
-          return api<TradeResponse>('/trades', {
-            query: { limit, offset },
+          return api.get<TradeResponse>('/trades', {
+            params: { limit, offset },
           });
         };
-        const result = await fetchTrades(pageLength, 0);
+        const res = await fetchTrades(pageLength, 0);
+        const result: TradeResponse = res.data;
         let { trades: fetchedTrades } = result;
         if (Array.isArray(fetchedTrades)) {
           if (fetchedTrades.length !== result.total_trades) {
@@ -264,9 +312,10 @@ export function createBotSubStore(botId: string, botName: string) {
             // Don't use Promise.all - this would fire all requests at once, which can
             // cause problems for big sqlite databases
             do {
-              const nextResult = await fetchTrades(pageLength, fetchedTrades.length);
+              const pageResult = await fetchTrades(pageLength, fetchedTrades.length);
+              const nextResult: TradeResponse = pageResult.data;
               fetchedTrades = fetchedTrades.concat(nextResult.trades);
-              totalTrades = nextResult.total_trades;
+              totalTrades = pageResult.data.total_trades;
             } while (fetchedTrades.length !== totalTrades);
           }
           const tradesCount = fetchedTrades.length;
@@ -277,16 +326,25 @@ export function createBotSubStore(botId: string, botName: string) {
             botTradeId: `${botId}__${t.trade_id}`,
           }));
           tradeCount.value = tradesCount;
+          if (selectedPair.value === '' && trades.value.length > 0) {
+            selectedPair.value = trades.value[0].pair;
+          }
+          if (plotMultiPairs.value.length === 0 && trades.value.length > 0) {
+            plotMultiPairs.value = [trades.value[0].pair];
+          }
         }
         return Promise.resolve();
       } catch (error) {
+        if (axios.isAxiosError(error)) {
+          console.error(error.response);
+        }
         return Promise.reject(error);
       }
     }
 
     async function getOpenTrades() {
       try {
-        const data = await api<Trade[]>('/status');
+        const { data } = await api.get<never, AxiosResponse<Trade[]>>('/status');
         if (
           Array.isArray(openTrades.value) &&
           Array.isArray(data) &&
@@ -309,8 +367,8 @@ export function createBotSubStore(botId: string, botName: string) {
             selectedPair.value = mappedOpenTrades[0]?.pair || '';
           }
         }
-      } catch (data) {
-        return console.error(data);
+      } catch (error) {
+        return Promise.reject(error);
       }
     }
 
@@ -320,8 +378,8 @@ export function createBotSubStore(botId: string, botName: string) {
     const activeLocks = computed(() => currentLocks.value?.locks || []);
     async function getLocks() {
       try {
-        const result = await api<LockResponse>('/locks');
-        return (currentLocks.value = result);
+        const result = await api.get('/locks');
+        return (currentLocks.value = result.data);
       } catch (data) {
         return console.error(data);
       }
@@ -329,11 +387,14 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function deleteLock(lockid: string) {
       try {
-        const res = await api<LockResponse>(`/locks/${lockid}`, { method: 'DELETE' });
+        const res = await api.delete<LockResponse>(`/locks/${lockid}`);
         showAlert(`Deleted Lock ${lockid}.`);
-        currentLocks.value = res;
+        currentLocks.value = res.data;
         return Promise.resolve(res);
       } catch (error) {
+        if (axios.isAxiosError(error)) {
+          console.error(error.response);
+        }
         showAlert(`Failed to delete lock ${lockid}`, 'error');
         return Promise.reject(error);
       }
@@ -354,18 +415,26 @@ export function createBotSubStore(botId: string, botName: string) {
         try {
           let result: PairHistory | null = null;
           const settingsStore = useSettingsStore();
+          // The chart's strategy: the dashboard gateway adds that strategy's indicators to a
+          // Nautilus bot's candles. Freqtrade ignores the extra field.
+          const requestedStrategy = chartStrategy.value;
+          const request = requestedStrategy ? { ...payload, strategy: requestedStrategy } : payload;
           if (botFeatures.value.reducedPairCalls && settingsStore.useReducedPairCalls) {
             // Modern approach, allowing filtering of columns
-            const data = await api<PairHistory>('/pair_candles', {
-              method: 'POST',
-              body: payload,
-            });
+            const { data } = await api.post<PairCandlePayload, AxiosResponse<PairHistory>>(
+              '/pair_candles',
+              request,
+            );
             result = data;
           } else {
-            const data = await api<PairHistory>('/pair_candles', {
-              query: { ...payload },
+            const { data } = await api.get<PairHistory>('/pair_candles', {
+              params: { ...request },
             });
             result = data;
+          }
+          if (requestedStrategy !== chartStrategy.value) {
+            // Answered for a strategy no longer selected; the newer request owns this pair's slot.
+            return;
           }
           if (result) {
             candleData.value = {
@@ -383,9 +452,9 @@ export function createBotSubStore(botId: string, botName: string) {
           candleDataStatus.value = LoadingStatus.error;
         }
       } else {
-        const error = 'pair or timeframe not specified';
-        console.error(error);
-        return Promise.reject(error);
+        // Asked before the bot's config (timeframe) or a pair is known: nothing to fetch yet,
+        // and the caller asks again once they are. Rejecting left an unhandled rejection.
+        console.warn('pair or timeframe not specified', payload);
       }
     }
 
@@ -401,15 +470,15 @@ export function createBotSubStore(botId: string, botName: string) {
           const timeout = 2 * 60 * 1000;
           if (botFeatures.value.reducedPairCalls && settingsStore.useReducedPairCalls) {
             // Modern approach, allowing filtering of columns
-            const data = await api<PairHistory>('/pair_history', {
-              method: 'POST',
-              body: payload,
-              timeout,
-            });
+            const { data } = await api.post<PairHistoryPayload, AxiosResponse<PairHistory>>(
+              '/pair_history',
+              payload,
+              { timeout },
+            );
             result = data;
           } else {
-            const data = await api<PairHistory>('/pair_history', {
-              query: { ...payload },
+            const { data } = await api.get<PairHistory>('/pair_history', {
+              params: { ...payload },
               timeout,
             });
             result = data;
@@ -423,13 +492,14 @@ export function createBotSubStore(botId: string, botName: string) {
           historyStatus.value = LoadingStatus.success;
           return;
         } catch (err) {
-          console.error(err);
+          console.error('axios', err);
           historyStatus.value = LoadingStatus.error;
-          if (isApiError(err)) {
-            const isTimeout = isTimeoutError(err);
+          if (axios.isAxiosError(err)) {
+            console.error(err.response);
+            const isTimeout = err.code === 'ECONNABORTED' || err.message?.includes('timeout');
             const errMsg = isTimeout
               ? 'Timeout exceeded'
-              : (err.data?.detail ?? 'Error fetching history');
+              : (err.response?.data?.detail ?? 'Error fetching history');
             showAlert(errMsg, 'error');
           }
           return Promise.reject(err);
@@ -455,8 +525,8 @@ export function createBotSubStore(botId: string, botName: string) {
           payload['strategy'] = strategy.value.strategy;
         }
 
-        const plotConfig = await api<Partial<PlotConfig>>('/plot_config', {
-          query: { ...payload },
+        const { data: plotConfig } = await api.get<Partial<PlotConfig>>('/plot_config', {
+          params: { ...payload },
         });
         const finalPlotConfig: PlotConfig = {
           subplots: {},
@@ -474,7 +544,7 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getStrategyList() {
       try {
-        const data = await api<StrategyListResult>('/strategies');
+        const { data } = await api.get<StrategyListResult>('/strategies');
         strategyList.value = data.strategies;
         return Promise.resolve(data);
       } catch (error) {
@@ -483,16 +553,21 @@ export function createBotSubStore(botId: string, botName: string) {
       }
     }
 
-    async function getStrategy(strategyName: string) {
+    /**
+     * @param notify Show a warning when the read fails (a background refresh passes false: a
+     * transient 503 from a slow bot is not something the user asked for).
+     */
+    async function getStrategy(strategyName: string, notify = true) {
       try {
-        const data = await api<StrategyResult>(`/strategy/${strategyName}`, {});
+        const { data } = await api.get<StrategyResult>(`/strategy/${strategyName}`, {});
         strategy.value = data;
         return Promise.resolve(data);
       } catch (error) {
         console.error(error);
-        if (isApiError(error)) {
-          const errMsg = error.data?.detail ?? 'Error fetching history';
-          showAlert(errMsg, 'warning');
+        if (axios.isAxiosError(error)) {
+          console.error(error.response);
+          const errMsg = error.response?.data?.detail ?? 'Error fetching history';
+          if (notify) showAlert(errMsg, 'warning');
         }
         return Promise.reject(error);
       }
@@ -500,13 +575,13 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getCurrentStrategy() {
       if (botFeatures.value.strategyParameters && isTrading.value && botState.value?.strategy) {
-        return getStrategy(botState.value.strategy);
+        return getStrategy(botState.value.strategy, false);
       }
     }
 
     async function getFreqAIModelList() {
       try {
-        const data = await api<FreqAIModelListResult>('/freqaimodels');
+        const { data } = await api.get<FreqAIModelListResult>('/freqaimodels');
         freqaiModelList.value = data.freqaimodels;
         return Promise.resolve(data);
       } catch (error) {
@@ -517,7 +592,7 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getHyperoptLossList() {
       try {
-        const data = await api<HyperoptLossListResponse>('/hyperopt-loss');
+        const { data } = await api.get<HyperoptLossListResponse>('/hyperopt-loss');
         hyperoptLossList.value = data.loss_functions;
         return Promise.resolve(data);
       } catch (error) {
@@ -528,7 +603,7 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getExchangeList() {
       try {
-        const data = await api<ExchangeListResult>('/exchanges');
+        const { data } = await api.get<ExchangeListResult>('/exchanges');
         exchangeList.value = data.exchanges;
         return Promise.resolve(data.exchanges);
       } catch (error) {
@@ -539,8 +614,8 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getAvailablePairs(payload: AvailablePairPayload) {
       try {
-        const data = await api<AvailablePairResult>('/available_pairs', {
-          query: { ...payload },
+        const { data } = await api.get<AvailablePairResult>('/available_pairs', {
+          params: { ...payload },
         });
         pairlist.value = data.pairs;
         pairlistWithTimeframe.value = data.pair_interval;
@@ -553,8 +628,8 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getMarkets(payload: MarketsPayload) {
       try {
-        const data = await api<Markets>('/markets', {
-          query: { ...payload },
+        const { data } = await api.get<Markets>('/markets', {
+          params: { ...payload },
         });
         return Promise.resolve(data);
       } catch (error) {
@@ -571,7 +646,7 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getPerformance() {
       try {
-        const data = await api<PerformanceEntry[]>('/performance');
+        const { data } = await api.get<PerformanceEntry[]>('/performance');
         performanceStats.value = data;
         return Promise.resolve(data);
       } catch (error) {
@@ -582,7 +657,7 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getEntryStats() {
       try {
-        const data = await api<EntryStats[]>('/entries');
+        const { data } = await api.get<EntryStats[]>('/entries');
         entryStats.value = data;
         return Promise.resolve(data);
       } catch (error) {
@@ -593,7 +668,7 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getExitStats() {
       try {
-        const data = await api<ExitStats[]>('/exits');
+        const { data } = await api.get<ExitStats[]>('/exits');
         exitStats.value = data;
         return Promise.resolve(data);
       } catch (error) {
@@ -604,7 +679,7 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getMixTagStats() {
       try {
-        const data = await api<MixTagStats[]>('/mix_tags');
+        const { data } = await api.get<MixTagStats[]>('/mix_tags');
         mixTagStats.value = data;
         return Promise.resolve(data);
       } catch (error) {
@@ -619,11 +694,11 @@ export function createBotSubStore(botId: string, botName: string) {
     async function getProfit() {
       try {
         if (botFeatures.value.hasProfitAll) {
-          const data = await api<AllProfitStats>('/profit_all');
+          const { data } = await api.get<AllProfitStats>('/profit_all');
           profitAll.value = data;
           return Promise.resolve(data);
         }
-        const data = await api<ProfitStats>('/profit');
+        const { data } = await api.get<ProfitStats>('/profit');
         if (!profitAll.value) {
           profitAll.value = {} as AllProfitStats;
         }
@@ -641,9 +716,15 @@ export function createBotSubStore(botId: string, botName: string) {
     const blacklist = ref<string[]>([]);
     async function getWhitelist() {
       try {
-        const data = await api<WhitelistResponse>('/whitelist');
+        const { data } = await api.get<WhitelistResponse>('/whitelist');
         whitelist.value = data.whitelist;
         pairlistMethods.value = data.method;
+        if (selectedPair.value === '' && data.whitelist.length > 0) {
+          selectedPair.value = data.whitelist[0];
+        }
+        if (plotMultiPairs.value.length === 0 && data.whitelist.length > 0) {
+          plotMultiPairs.value = [data.whitelist[0]];
+        }
         return Promise.resolve(data);
       } catch (error) {
         return Promise.reject(error);
@@ -652,7 +733,7 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getBlacklist() {
       try {
-        const data = await api<BlacklistResponse>('/blacklist');
+        const { data } = await api.get<BlacklistResponse>('/blacklist');
         blacklist.value = data.blacklist;
         return Promise.resolve(data);
       } catch (error) {
@@ -670,8 +751,8 @@ export function createBotSubStore(botId: string, botName: string) {
     ) {
       const { timescale = 20 } = payload;
       try {
-        const data = await api<TimeSummaryReturnValue>(`/${aggregation}`, {
-          query: { timescale },
+        const { data } = await api.get<TimeSummaryReturnValue>(`/${aggregation}`, {
+          params: { timescale },
         });
         if (aggregation === TimeSummaryOptions.daily) {
           dailyStats.value = data;
@@ -683,7 +764,6 @@ export function createBotSubStore(botId: string, botName: string) {
 
         return Promise.resolve(data);
       } catch (error) {
-        console.error(error);
         return Promise.reject(error);
       }
     }
@@ -692,7 +772,7 @@ export function createBotSubStore(botId: string, botName: string) {
     const balance = shallowRef<BalanceInterface>({} as BalanceInterface);
     async function getBalance() {
       try {
-        const data = await api('/balance');
+        const { data } = await api.get('/balance');
         balance.value = data;
         return Promise.resolve(data);
       } catch (error) {
@@ -706,7 +786,7 @@ export function createBotSubStore(botId: string, botName: string) {
         return;
       }
       try {
-        const data = await api<WalletHistory>('/historic_balance');
+        const { data } = await api.get<WalletHistory>('/historic_balance');
         if (data) {
           data.botName = storeBotName.value;
         }
@@ -718,13 +798,11 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getState() {
       try {
-        const data = await api<BotState>('/show_config');
+        const { data } = await api.get<BotState>('/show_config');
         botState.value = data;
         botStatusAvailable.value = true;
         startWebSocket();
-        if (isWebserverMode.value) {
-          recoverBgJobs();
-        }
+        if (isWebserverMode.value) recoverBgJobs().then();
         return Promise.resolve(data);
       } catch (error) {
         return Promise.reject(error);
@@ -735,31 +813,29 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getLogs() {
       try {
-        const data = await api('/logs');
+        const { data } = await api.get('/logs');
         lastLogs.value = data.logs;
         return Promise.resolve(data);
       } catch (error) {
-        console.error(error);
         return Promise.reject(error);
       }
     }
 
     async function getPairlists() {
       try {
-        const data = await api<PairlistsResponse>('/pairlists/available');
+        const { data } = await api.get<PairlistsResponse>('/pairlists/available');
         return Promise.resolve(data);
       } catch (error) {
-        console.error(error);
         return Promise.reject(error);
       }
     }
 
     async function evaluatePairlist(payload: PairlistsPayload) {
       try {
-        const data = await api<BgTaskStarted>('/pairlists/evaluate', {
-          method: 'POST',
-          body: payload,
-        });
+        const { data } = await api.post<PairlistsPayload, AxiosResponse<BgTaskStarted>>(
+          '/pairlists/evaluate',
+          payload,
+        );
         return Promise.resolve(data);
       } catch (error) {
         console.error(error);
@@ -769,7 +845,7 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getPairlistEvalResult(jobId: string) {
       try {
-        const data = await api<PairlistEvalResponse>(`/pairlists/evaluate/${jobId}`);
+        const { data } = await api.get<PairlistEvalResponse>(`/pairlists/evaluate/${jobId}`);
         return Promise.resolve(data);
       } catch (error) {
         console.error(error);
@@ -777,14 +853,12 @@ export function createBotSubStore(botId: string, botName: string) {
       }
     }
 
-    // #region background jobs
     const backgroundJobs = ref<Record<string, BackgroundTaskStatus>>({});
-    // In-flight polls, keyed by jobId - ensures a single interval per job
     const bgJobPolls = new Map<string, Promise<BackgroundTaskStatus>>();
 
     async function getBackgroundJobStatus(jobId: string) {
       try {
-        const data = await api<BackgroundTaskStatus>(`/background/${jobId}`);
+        const { data } = await api.get<BackgroundTaskStatus>(`/background/${jobId}`);
         return Promise.resolve(data);
       } catch (error) {
         console.error(error);
@@ -792,16 +866,9 @@ export function createBotSubStore(botId: string, botName: string) {
       }
     }
 
-    /**
-     * Poll a background job until it finishes, keeping `backgroundJobs` (and therefore
-     * the tracking widget) up to date. Resolves with the final status so callers can
-     * fetch the typed result. Deduplicated per jobId.
-     */
     function pollBgJob(jobId: string, jobCategory: JobCategory): Promise<BackgroundTaskStatus> {
       const existing = bgJobPolls.get(jobId);
-      if (existing) {
-        return existing;
-      }
+      if (existing) return existing;
       if (!backgroundJobs.value[jobId]) {
         backgroundJobs.value[jobId] = {
           job_id: jobId,
@@ -834,12 +901,10 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function recoverBgJobs() {
       try {
-        const data = await api<BackgroundTaskStatus[]>('/background');
+        const { data } = await api.get<BackgroundTaskStatus[]>('/background');
         for (const job of data) {
           backgroundJobs.value[job.job_id] = job;
-          if (job.running) {
-            pollBgJob(job.job_id, job.job_category);
-          }
+          if (job.running) pollBgJob(job.job_id, job.job_category);
         }
       } catch (error) {
         console.error(error);
@@ -849,12 +914,8 @@ export function createBotSubStore(botId: string, botName: string) {
     async function clearBgJobs() {
       if (botFeatures.value.backgroundJobDelete) {
         try {
-          // Server-side clear - returns the list of still-running jobs; cleared jobs are omitted.
-          const data = await api<BackgroundTaskStatus[]>('/background/clear', { method: 'DELETE' });
-          backgroundJobs.value = {};
-          for (const job of data) {
-            backgroundJobs.value[job.job_id] = job;
-          }
+          const { data } = await api.delete<BackgroundTaskStatus[]>('/background/clear');
+          backgroundJobs.value = Object.fromEntries(data.map((job) => [job.job_id, job]));
           showAlert('All non-running background jobs cleared', 'success');
         } catch (error) {
           console.error(error);
@@ -862,18 +923,17 @@ export function createBotSubStore(botId: string, botName: string) {
         }
         return;
       }
-      // Local fallback - drop all jobs that are no longer running.
       for (const [jobId, job] of Object.entries(backgroundJobs.value)) {
-        if (!job.running) {
-          delete backgroundJobs.value[jobId];
-        }
+        if (!job.running) delete backgroundJobs.value[jobId];
       }
     }
-    // #endregion background jobs
 
     async function startDataDownload(payload: DownloadDataPayload) {
       try {
-        const data = await api<BgTaskStarted>('/download_data', { method: 'POST', body: payload });
+        const { data } = await api.post<DownloadDataPayload, AxiosResponse<BgTaskStarted>>(
+          '/download_data',
+          payload,
+        );
         pollBgJob(data.job_id, 'download_data');
         return Promise.resolve(data);
       } catch (error) {
@@ -883,60 +943,46 @@ export function createBotSubStore(botId: string, botName: string) {
     }
 
     async function startRecursiveAnalysis(payload: RecursiveAnalysisPayload) {
-      try {
-        const data = await api<BgTaskStarted>('/recursive_analysis', {
-          method: 'POST',
-          body: payload,
-        });
-        pollBgJob(data.job_id, 'recursive_analysis');
-        return Promise.resolve(data);
-      } catch (error) {
-        console.error(error);
-        return Promise.reject(error);
-      }
+      const { data } = await api.post<RecursiveAnalysisPayload, AxiosResponse<BgTaskStarted>>(
+        '/recursive_analysis',
+        payload,
+      );
+      pollBgJob(data.job_id, 'recursive_analysis');
+      return data;
     }
 
     async function getRecursiveAnalysisResult(jobId: string) {
-      try {
-        const data = await api<RecursiveAnalysis>(`/recursive_analysis/${jobId}`);
-        return Promise.resolve(data);
-      } catch (error) {
-        console.error(error);
-        return Promise.reject(error);
-      }
+      const { data } = await api.get<RecursiveAnalysis>(`/recursive_analysis/${jobId}`);
+      return data;
     }
 
     async function startLookaheadAnalysis(payload: LookaheadAnalysisPayload) {
-      try {
-        const data = await api<BgTaskStarted>('/lookahead_analysis', {
-          method: 'POST',
-          body: payload,
-        });
-        pollBgJob(data.job_id, 'lookahead_analysis');
-        return Promise.resolve(data);
-      } catch (error) {
-        console.error(error);
-        return Promise.reject(error);
-      }
+      const { data } = await api.post<LookaheadAnalysisPayload, AxiosResponse<BgTaskStarted>>(
+        '/lookahead_analysis',
+        payload,
+      );
+      pollBgJob(data.job_id, 'lookahead_analysis');
+      return data;
     }
 
     async function getLookaheadAnalysisResult(jobId: string) {
-      try {
-        const data = await api<LookaheadAnalysis>(`/lookahead_analysis/${jobId}`);
-        return Promise.resolve(data);
-      } catch (error) {
-        console.error(error);
-        return Promise.reject(error);
-      }
+      const { data } = await api.get<LookaheadAnalysis>(`/lookahead_analysis/${jobId}`);
+      return data;
     }
 
     async function startBot() {
       try {
-        const data = await api<StatusResponse>('/start', { method: 'POST', body: {} });
+        const { data } = await api.post<Record<string, never>, AxiosResponse<StatusResponse>>(
+          '/start',
+          {},
+        );
         console.log(data);
         showAlert(data.status);
         return Promise.resolve(data);
       } catch (error) {
+        if (axios.isAxiosError(error)) {
+          console.error(error.response);
+        }
         showAlert('Error starting bot.', 'error');
         return Promise.reject(error);
       }
@@ -944,10 +990,16 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function stopBot() {
       try {
-        const res = await api<StatusResponse>('/stop', { method: 'POST', body: {} });
-        showAlert(res.status);
+        const res = await api.post<Record<string, never>, AxiosResponse<StatusResponse>>(
+          '/stop',
+          {},
+        );
+        showAlert(res.data.status);
         return Promise.resolve(res);
       } catch (error) {
+        if (axios.isAxiosError(error)) {
+          console.error(error.response);
+        }
         showAlert('Error stopping bot.', 'error');
         return Promise.reject(error);
       }
@@ -955,10 +1007,16 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function stopBuy() {
       try {
-        const res = await api<StatusResponse>('/stopbuy', { method: 'POST', body: {} });
-        showAlert(res.status);
+        const res = await api.post<Record<string, never>, AxiosResponse<StatusResponse>>(
+          '/stopbuy',
+          {},
+        );
+        showAlert(res.data.status);
         return Promise.resolve(res);
       } catch (error) {
+        if (axios.isAxiosError(error)) {
+          console.error(error.response);
+        }
         showAlert('Error calling stopbuy.', 'error');
         return Promise.reject(error);
       }
@@ -966,11 +1024,17 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function reloadConfig() {
       try {
-        const res = await api<StatusResponse>('/reload_config', { method: 'POST', body: {} });
-        console.log(res);
-        showAlert(res.status);
+        const res = await api.post<Record<string, never>, AxiosResponse<StatusResponse>>(
+          '/reload_config',
+          {},
+        );
+        console.log(res.data);
+        showAlert(res.data.status);
         return Promise.resolve(res);
       } catch (error) {
+        if (axios.isAxiosError(error)) {
+          console.error(error.response);
+        }
         showAlert('Error reloading.', 'error');
         return Promise.reject(error);
       }
@@ -978,10 +1042,13 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function deleteTrade(tradeid: string) {
       try {
-        const res = await api<DeleteTradeResponse>(`/trades/${tradeid}`, { method: 'DELETE' });
-        showAlert(res.result_msg ? res.result_msg : `Deleted Trade ${tradeid}`);
+        const res = await api.delete<DeleteTradeResponse>(`/trades/${tradeid}`);
+        showAlert(res.data.result_msg ? res.data.result_msg : `Deleted Trade ${tradeid}`);
         return Promise.resolve(res);
       } catch (error) {
+        if (axios.isAxiosError(error)) {
+          console.error(error.response);
+        }
         showAlert(`Failed to delete trade ${tradeid}`, 'error');
         return Promise.reject(error);
       }
@@ -989,12 +1056,13 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function cancelOpenOrder(tradeid: string) {
       try {
-        const res = await api<DeleteTradeResponse>(`/trades/${tradeid}/open-order`, {
-          method: 'DELETE',
-        });
-        showAlert(res.result_msg ? res.result_msg : `Canceled open order for ${tradeid}`);
+        const res = await api.delete<DeleteTradeResponse>(`/trades/${tradeid}/open-order`);
+        showAlert(res.data.result_msg ? res.data.result_msg : `Canceled open order for ${tradeid}`);
         return Promise.resolve(res);
       } catch (error) {
+        if (axios.isAxiosError(error)) {
+          console.error(error.response);
+        }
         showAlert(`Failed to cancel open order ${tradeid}`, 'error');
         return Promise.reject(error);
       }
@@ -1002,9 +1070,12 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function reloadTrade(tradeid: string) {
       try {
-        const res = await api<Trade>(`/trades/${tradeid}/reload`, { method: 'POST' });
+        const res = await api.post<never, AxiosResponse<Trade>>(`/trades/${tradeid}/reload`);
         return Promise.resolve(res);
       } catch (error) {
+        if (axios.isAxiosError(error)) {
+          console.error(error.response);
+        }
         showAlert(`Failed to reload trade ${tradeid}`, 'error');
         return Promise.reject(error);
       }
@@ -1012,9 +1083,14 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function getCustomDataForTrade(tradeid: Trade['trade_id']) {
       try {
-        const res = await api<TradeCustomData[]>(`/trades/${tradeid}/custom-data`);
-        return Promise.resolve(res);
+        const res = await api.get<never, AxiosResponse<TradeCustomData[]>>(
+          `/trades/${tradeid}/custom-data`,
+        );
+        return Promise.resolve(res.data);
       } catch (error) {
+        if (axios.isAxiosError(error)) {
+          console.error(error.response);
+        }
         showAlert(`Failed to get custom data for trade ${tradeid}`, 'error');
         return Promise.reject(error);
       }
@@ -1022,7 +1098,7 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function startTrade() {
       try {
-        const res = await api('/start_trade', { method: 'POST', body: {} });
+        const res = await api.post('/start_trade', {});
         return Promise.resolve(res);
       } catch (error) {
         return Promise.reject(error);
@@ -1031,10 +1107,16 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function forceexit(payload: ForceExitPayload) {
       try {
-        const res = await api<StatusResponse>('/forcesell', { method: 'POST', body: payload });
+        const res = await api.post<ForceExitPayload, AxiosResponse<StatusResponse>>(
+          '/forcesell',
+          payload,
+        );
         showAlert(`Exit order for ${payload.tradeid} created`, 'success');
         return Promise.resolve(res);
       } catch (error) {
+        if (axios.isAxiosError(error)) {
+          console.error(error.response);
+        }
         showAlert(`Failed to create exit order for ${payload.tradeid}`, 'error');
         return Promise.reject(error);
       }
@@ -1044,15 +1126,16 @@ export function createBotSubStore(botId: string, botName: string) {
       if (payload && payload.pair) {
         try {
           // TODO: Update forcebuy to forceenter ...
-          const res = await api<StatusResponse | TradeResponse>('/forcebuy', {
-            method: 'POST',
-            body: payload,
-          });
+          const res = await api.post<
+            ForceEnterPayload,
+            AxiosResponse<StatusResponse | TradeResponse>
+          >('/forcebuy', payload);
           showAlert(`Order for ${payload.pair} created.`, 'success');
           return Promise.resolve(res);
         } catch (error) {
-          if (isApiError(error)) {
-            showAlert(`Error occured entering: '${error.data?.error}'`, 'error');
+          if (axios.isAxiosError(error)) {
+            console.error(error.response);
+            showAlert(`Error occured entering: '${error.response?.data?.error}'`, 'error');
           }
           return Promise.reject(error);
         }
@@ -1066,13 +1149,13 @@ export function createBotSubStore(botId: string, botName: string) {
       console.log(`Adding ${payload} to blacklist`);
       if (payload && payload.blacklist) {
         try {
-          const result = await api<BlacklistResponse>('/blacklist', {
-            method: 'POST',
-            body: payload,
-          });
-          blacklist.value = result.blacklist;
-          if (result.errors && Object.keys(result.errors).length !== 0) {
-            const { errors } = result;
+          const result = await api.post<BlacklistPayload, AxiosResponse<BlacklistResponse>>(
+            '/blacklist',
+            payload,
+          );
+          blacklist.value = result.data.blacklist;
+          if (result.data.errors && Object.keys(result.data.errors).length !== 0) {
+            const { errors } = result.data;
             Object.keys(errors).forEach((pair) => {
               showAlert(
                 `Error while adding pair ${pair} to Blacklist: ${errors[pair]?.error_msg}`,
@@ -1082,11 +1165,12 @@ export function createBotSubStore(botId: string, botName: string) {
           } else {
             showAlert(`Pair ${payload.blacklist} added.`);
           }
-          return Promise.resolve(result);
+          return Promise.resolve(result.data);
         } catch (error) {
-          if (isApiError(error)) {
+          if (axios.isAxiosError(error)) {
+            console.error(error.response);
             showAlert(
-              `Error occured while adding pairs to Blacklist: '${error.data?.error}'`,
+              `Error occured while adding pairs to Blacklist: '${error.response?.data?.error}'`,
               'error',
             );
           }
@@ -1103,14 +1187,20 @@ export function createBotSubStore(botId: string, botName: string) {
 
       if (blacklistPairs) {
         try {
-          // Array query values are serialized as repeated keys (pairs_to_delete=A&pairs_to_delete=B)
-          const result = await api<BlacklistResponse>('/blacklist', {
-            method: 'DELETE',
-            query: { pairs_to_delete: blacklistPairs },
-          });
-          blacklist.value = result.blacklist;
-          if (result.errors && Object.keys(result.errors).length !== 0) {
-            const { errors } = result;
+          const result = await api.delete<BlacklistPayload, AxiosResponse<BlacklistResponse>>(
+            '/blacklist',
+            {
+              params: {
+                pairs_to_delete: blacklistPairs,
+              },
+              paramsSerializer: {
+                indexes: null,
+              },
+            },
+          );
+          blacklist.value = result.data.blacklist;
+          if (result.data.errors && Object.keys(result.data.errors).length !== 0) {
+            const { errors } = result.data;
             Object.keys(errors).forEach((pair) => {
               showAlert(
                 `Error while removing pair ${pair} from Blacklist: ${errors[pair]?.error_msg}`,
@@ -1120,11 +1210,12 @@ export function createBotSubStore(botId: string, botName: string) {
           } else {
             showAlert(`Pair ${blacklistPairs} removed.`);
           }
-          return Promise.resolve(result);
+          return Promise.resolve(result.data);
         } catch (error) {
-          if (isApiError(error)) {
+          if (axios.isAxiosError(error)) {
+            console.error(error.response);
             showAlert(
-              `Error occured while removing pairs from Blacklist: '${error.data?.error}'`,
+              `Error occured while removing pairs from Blacklist: '${error.response?.data?.error}'`,
               'error',
             );
           }
@@ -1139,7 +1230,7 @@ export function createBotSubStore(botId: string, botName: string) {
     const sysInfo = ref<SysInfoResponse>({} as SysInfoResponse);
     async function getSysInfo() {
       try {
-        const data = await api<SysInfoResponse>('/sysinfo');
+        const { data } = await api.get<SysInfoResponse>('/sysinfo');
         sysInfo.value = data;
         return Promise.resolve(data);
       } catch (err) {
@@ -1166,15 +1257,18 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function startBacktest(payload: BacktestPayload) {
       try {
-        const result = await api<BacktestStatus>('/backtest', { method: 'POST', body: payload });
-        updateBacktestRunning(result);
+        const result = await api.post<BacktestPayload, AxiosResponse<BacktestStatus>>(
+          '/backtest',
+          payload,
+        );
+        updateBacktestRunning(result.data);
       } catch (err) {
         console.log(err);
       }
     }
 
     async function pollBacktest() {
-      const data = await api<BacktestStatus>('/backtest');
+      const { data } = await api.get<BacktestStatus>('/backtest');
 
       updateBacktestRunning(data);
       if (data.running === false && data.backtest_result) {
@@ -1188,7 +1282,7 @@ export function createBotSubStore(botId: string, botName: string) {
     async function removeBacktest() {
       backtestHistory.value = {};
       try {
-        const data = await api<BacktestStatus>('/backtest', { method: 'DELETE' });
+        const { data } = await api.delete<BacktestStatus>('/backtest');
         updateBacktestRunning(data);
         return Promise.resolve(data);
       } catch (err) {
@@ -1205,7 +1299,7 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function stopBacktest() {
       try {
-        const data = await api<BacktestStatus>('/backtest/abort');
+        const { data } = await api.get<BacktestStatus>('/backtest/abort');
         updateBacktestRunning(data);
         return Promise.resolve(data);
       } catch (err) {
@@ -1214,7 +1308,7 @@ export function createBotSubStore(botId: string, botName: string) {
     }
 
     async function getBacktestHistory() {
-      const data = await api<BacktestHistoryEntry[]>('/backtest/history');
+      const { data } = await api.get<BacktestHistoryEntry[]>('/backtest/history');
       backtestHistoryList.value = data;
     }
 
@@ -1245,19 +1339,18 @@ export function createBotSubStore(botId: string, botName: string) {
     }
 
     async function getBacktestHistoryResult(payload: BacktestHistoryEntry) {
-      const result = await api<BacktestStatus>('/backtest/history/result', {
-        query: { filename: payload.filename, strategy: payload.strategy },
+      const result = await api.get<BacktestStatus>('/backtest/history/result', {
+        params: { filename: payload.filename, strategy: payload.strategy },
       });
-      if (result.backtest_result) {
-        updateBacktestResult(result.backtest_result);
+      if (result.data.backtest_result) {
+        updateBacktestResult(result.data.backtest_result);
       }
     }
 
     async function deleteBacktestHistoryResult(btHistoryEntry: BacktestHistoryEntry) {
       try {
-        const data = await api<BacktestHistoryEntry[]>(
+        const { data } = await api.delete<BacktestHistoryEntry[]>(
           `/backtest/history/${btHistoryEntry.filename}`,
-          { method: 'DELETE' },
         );
         backtestHistoryList.value = data;
       } catch (err) {
@@ -1271,7 +1364,7 @@ export function createBotSubStore(botId: string, botName: string) {
         return Promise.reject('No backtest selected');
       }
       try {
-        const data = await api<BacktestMarketChange>(
+        const { data } = await api.get<BacktestMarketChange>(
           `/backtest/history/${selectedBacktestMetadata.value.filename}/market_change`,
         );
         return data;
@@ -1289,7 +1382,7 @@ export function createBotSubStore(botId: string, botName: string) {
         return Promise.reject('No backtest selected');
       }
       try {
-        const data = await api<WalletHistory>(
+        const { data } = await api.get<WalletHistory>(
           `/backtest/history/${selectedBacktestMetadata.value.filename}/${selectedBacktestMetadata.value.strategyName}/wallet`,
         );
         data.botName = `${selectedBacktestMetadata.value.strategyName} (Backtest)`;
@@ -1304,10 +1397,10 @@ export function createBotSubStore(botId: string, botName: string) {
 
     async function saveBacktestResultMetadata(payload: BacktestResultUpdate) {
       try {
-        const data = await api<BacktestHistoryEntry[]>(`/backtest/history/${payload.filename}`, {
-          method: 'PATCH',
-          body: payload,
-        });
+        const { data } = await api.patch<
+          BacktestMetadataPatch,
+          AxiosResponse<BacktestHistoryEntry[]>
+        >(`/backtest/history/${payload.filename}`, payload);
         console.log(data);
         data.forEach((entry) => {
           const existingEntry = backtestHistory.value[entry.run_id];
@@ -1344,15 +1437,6 @@ export function createBotSubStore(botId: string, botName: string) {
     // #region Websocket handling
 
     const websocketStarted = ref(false);
-    /** Handle to the active websocket connection - used to prevent duplicate connections. */
-    let websocketHandle: { close: () => void } | undefined = undefined;
-
-    function closeWebSocket() {
-      websocketHandle?.close();
-      websocketHandle = undefined;
-      websocketStarted.value = false;
-    }
-
     function _handleWebsocketMessage(ws: WebSocket, event: MessageEvent<string>) {
       const msg: FTWsMessage = JSON.parse(event.data);
       switch (msg.type) {
@@ -1387,14 +1471,14 @@ export function createBotSubStore(botId: string, botName: string) {
 
     function startWebSocket() {
       if (
-        websocketHandle !== undefined ||
+        websocketStarted.value === true ||
         botStatusAvailable.value === false ||
         !botFeatures.value.websocketConnection ||
         isWebserverMode.value === true
       ) {
         return;
       }
-      const wsHandle = useWebSocket(
+      const { send, close } = useWebSocket(
         // 'ws://localhost:8080/api/v1/message/ws?token=testtoken',
         `${loginInfo.baseWsUrl.value}/message/ws?token=${loginInfo.accessToken.value}`,
         {
@@ -1408,7 +1492,8 @@ export function createBotSubStore(botId: string, botName: string) {
           // },
           onError: (ws, event) => {
             console.log('onError', event, ws);
-            closeWebSocket();
+            websocketStarted.value = false;
+            close();
           },
           onMessage: _handleWebsocketMessage,
           onConnected: () => {
@@ -1427,13 +1512,13 @@ export function createBotSubStore(botId: string, botName: string) {
                 subscriptions.push(FtWsMessageTypes.newCandle);
               }
 
-              wsHandle.send(
+              send(
                 JSON.stringify({
                   type: 'subscribe',
                   data: subscriptions,
                 }),
               );
-              wsHandle.send(
+              send(
                 JSON.stringify({
                   type: FtWsMessageTypes.whitelist,
                   data: '',
@@ -1443,13 +1528,13 @@ export function createBotSubStore(botId: string, botName: string) {
           },
         },
       );
-      websocketHandle = wsHandle;
     }
     // #endregion websocket handling
 
     return {
       websocketStarted,
       isSelected,
+      refreshLight,
       ping,
       botStatusAvailable,
       isBotOnline,
@@ -1479,6 +1564,7 @@ export function createBotSubStore(botId: string, botName: string) {
       detailTradeId,
       selectedPair,
       plotMultiPairs,
+      chartStrategy,
       candleData,
       candleDataStatus,
       history,
@@ -1509,6 +1595,7 @@ export function createBotSubStore(botId: string, botName: string) {
       stakeCurrencyDecimals,
       canRunBacktest,
       isWebserverMode,
+      isReadOnly,
       selectedBacktestResult,
       selectedBacktestMetadata,
       shortAllowed,

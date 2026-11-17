@@ -44,6 +44,7 @@ function removePairLock(item: Lock) {
       </template>
       <template #actions-cell="{ row }">
         <UButton
+          v-if="!botStore.activeBot.isReadOnly"
           class="btn-xs ms-1"
           size="sm"
           color="neutral"

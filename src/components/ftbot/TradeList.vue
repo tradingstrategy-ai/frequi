@@ -71,8 +71,15 @@ if (props.multiBotView) {
   tableFields.value.unshift({ field: 'botName', header: 'Bot' });
 }
 
+/** Trade actions (force exit, delete, reload) only for bots the dashboard may write to. */
+function rowIsReadOnly(trade: Trade): boolean {
+  return botStore.botStores[trade.botId]?.isReadOnly ?? botStore.activeBot.isReadOnly;
+}
+
 const tableColumns = computed<TableColumn<Trade>[]>(() =>
-  tableFields.value.map((f) => ({ accessorKey: f.field, header: f.header })),
+  tableFields.value
+    .filter((f) => f.field !== 'actions' || props.multiBotView || !botStore.activeBot.isReadOnly)
+    .map((f) => ({ accessorKey: f.field, header: f.header })),
 );
 
 const filteredTrades = computed(() => {
@@ -232,6 +239,7 @@ const rowSelection = computed({
       </template>
       <template #actions-cell="{ row }">
         <TradeActionsPopover
+          v-if="!rowIsReadOnly(row.original)"
           :id="row.original.trade_id ?? row.index"
           :enable-force-entry="botStore.activeBot.botState.force_entry_enable"
           :trade="row.original"

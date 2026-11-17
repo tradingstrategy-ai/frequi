@@ -1,4 +1,14 @@
-import { ofetch } from 'ofetch';
+import type { AxiosResponse } from 'axios';
+import axios from 'axios';
+import { getPresetBots } from '@/config/presetBots';
+import {
+  BOT_AUTHORIZATION_HEADER,
+  encodeBasicAuthorization,
+  getBotAuthorizationHeaderName,
+  isProxiedBotUrl,
+  isReportsAuthChallenge,
+} from '@/utils/botAuthorization';
+import { requireReportsAuth } from '@/composables/reportsAuth';
 
 import type {
   AuthPayload,
@@ -10,10 +20,69 @@ import type {
 } from '@/types';
 
 const AUTH_LOGIN_INFO = 'ftAuthLoginInfo';
+const AUTH_SELECTED_BOT = 'ftSelectedBot';
 const APIBASE = '/api/v1';
+const PRELOAD_DEMO_BOTS = import.meta.env.DEV && import.meta.env.VITE_PRELOAD_DEMO_BOTS !== 'false';
+
+function apiBaseUrl(url: string | null | undefined): string {
+  const baseURL = (url ?? '').trim().replace(/\/+$/, '');
+  if (!baseURL) return APIBASE;
+  return baseURL.endsWith(APIBASE) ? baseURL : `${baseURL}${APIBASE}`;
+}
+
+function apiEndpointUrl(url: string, endpoint: string): string {
+  return `${apiBaseUrl(url)}/${endpoint.replace(/^\/+/, '')}`;
+}
 
 // Global state for all login infos
 const allLoginInfos = useStorage<AuthStorageMulti>(AUTH_LOGIN_INFO, {});
+
+export function seedDemoPresetBots(force = false): string[] {
+  const enabled = force || PRELOAD_DEMO_BOTS;
+  if (!enabled) {
+    return [];
+  }
+
+  const seeded: string[] = [];
+  const nextLoginInfos = { ...allLoginInfos.value };
+  for (const bot of getPresetBots()) {
+    if (nextLoginInfos[bot.botId]) {
+      continue;
+    }
+    nextLoginInfos[bot.botId] = {
+      botName: bot.botName,
+      apiUrl: bot.botUrl,
+      username: 'freqtrade',
+      refreshToken: `${bot.botId}-refresh-token`,
+      accessToken: `${bot.botId}-access-token`,
+      autoRefresh: false,
+      sortId: bot.sortId,
+    };
+    seeded.push(bot.botId);
+  }
+
+  if (seeded.length > 0) {
+    allLoginInfos.value = nextLoginInfos;
+  }
+
+  // Only override the user's selection if it's missing or no longer present
+  // in the bot list (preset or custom). Previously this clause also nuked
+  // any NT selection on every page load, which was a leftover from when NT
+  // bots were placeholder-only — it broke real-NT-vault navigation
+  // (selecting an NT bot then clicking a different tab reset to the default bot).
+  const currentSelected = localStorage.getItem(AUTH_SELECTED_BOT);
+  const currentReachable = currentSelected ? Boolean(nextLoginInfos[currentSelected]) : false;
+  if (!currentSelected || !currentReachable) {
+    const preferred = nextLoginInfos['orchestrator_gmx_ai_gmx_vault']
+      ? 'orchestrator_gmx_ai_gmx_vault'
+      : seeded[0];
+    if (preferred) {
+      localStorage.setItem(AUTH_SELECTED_BOT, preferred);
+    }
+  }
+
+  return seeded;
+}
 
 /**
  * Get available bots with their descriptors
@@ -37,12 +106,6 @@ export const loggedInBots = computed<BotDescriptors>(() => {
   return response;
 });
 
-/** Build a UTF-8 safe HTTP Basic Authorization header value. */
-function basicAuthHeader(username: string, password: string): string {
-  const bytes = new TextEncoder().encode(`${username}:${password}`);
-  return `Basic ${btoa(String.fromCharCode(...bytes))}`;
-}
-
 export function useLoginInfo(botId: string) {
   console.log('botId', botId);
 
@@ -58,14 +121,7 @@ export function useLoginInfo(botId: string) {
   const accessToken = computed(() => currentInfo.value.accessToken);
 
   const baseUrl = computed<string>(() => {
-    const baseURL = currentInfo.value.apiUrl;
-    if (baseURL === null) {
-      return APIBASE;
-    }
-    if (!baseURL.endsWith(APIBASE)) {
-      return `${baseURL}${APIBASE}`;
-    }
-    return `${baseURL}${APIBASE}`;
+    return apiBaseUrl(currentInfo.value.apiUrl);
   });
 
   const baseWsUrl = computed<string>(() => {
@@ -75,6 +131,15 @@ export function useLoginInfo(botId: string) {
     }
     if (baseURL.startsWith('https://')) {
       return baseURL.replace('https://', 'wss://');
+    }
+    if (isProxiedBotUrl(baseURL)) {
+      // Same-origin proxy route, so the upgrade is gated by the reports
+      // BasicAuth credentials the bootstrap route established - the browser
+      // attaches those itself. A handshake cannot carry a custom header, so
+      // the bot's own auth is the ?token= JWT query freqtrade expects.
+      const { pathname, search } = new URL(baseURL, window.location.origin);
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${protocol}//${window.location.host}${pathname}${search}`;
     }
     return '';
   });
@@ -112,12 +177,21 @@ export function useLoginInfo(botId: string) {
   }
 
   async function loginCall(auth: AuthPayload): Promise<AuthStorage> {
-    const data = await ofetch<AuthResponse>(`${auth.url}${APIBASE}/token/login`, {
-      method: 'POST',
-      body: {},
-      credentials: 'include',
-      headers: { Authorization: basicAuthHeader(auth.username, auth.password) },
-    });
+    const usesReportsProxy = isProxiedBotUrl(auth.url);
+    const { data } = await axios.post<Record<string, never>, AxiosResponse<AuthResponse>>(
+      apiEndpointUrl(auth.url, 'token/login'),
+      {},
+      {
+        ...(usesReportsProxy
+          ? {
+              headers: {
+                [BOT_AUTHORIZATION_HEADER]: encodeBasicAuthorization(auth.username, auth.password),
+              },
+            }
+          : { auth: { username: auth.username, password: auth.password } }),
+        withCredentials: true,
+      },
+    );
     if (data.access_token && data.refresh_token) {
       const obj: AuthStorage = {
         botName: auth.botName,
@@ -127,7 +201,7 @@ export function useLoginInfo(botId: string) {
         refreshToken: data.refresh_token || '',
         autoRefresh: true,
       };
-      return obj;
+      return Promise.resolve(obj);
     }
     return Promise.reject('login failed');
   }
@@ -137,47 +211,43 @@ export function useLoginInfo(botId: string) {
     currentInfo.value = loginInfo;
   }
 
-  // Shared across concurrent 401s so that an expired access token triggers only one refresh call.
-  let refreshInFlight: Promise<string> | null = null;
-
-  async function doRefreshToken(): Promise<string> {
+  function refreshToken(): Promise<string> {
     console.log('Refreshing token...');
     const token = currentInfo.value.refreshToken;
-    try {
-      const data = await ofetch<AuthResponse>(
-        `${currentInfo.value.apiUrl}${APIBASE}/token/refresh`,
-        {
-          method: 'POST',
-          body: {},
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-      if (!data.access_token) {
-        throw new Error('No access token received');
-      }
-      currentInfo.value.accessToken = data.access_token;
-      return data.access_token;
-    } catch (err) {
-      console.error(err);
-      if (isApiError(err)) {
-        if (err.status === 401) {
-          console.log('Refresh token did not refresh.');
-          setRefreshTokenExpired();
-        } else if (err.status === 500 || err.status === 404) {
-          console.log('Bot seems to be offline... - retrying later');
-        }
-      }
-      throw err;
-    }
-  }
-
-  function refreshToken(): Promise<string> {
-    if (!refreshInFlight) {
-      refreshInFlight = doRefreshToken().finally(() => {
-        refreshInFlight = null;
-      });
-    }
-    return refreshInFlight;
+    return new Promise((resolve, reject) => {
+      axios
+        .post<Record<string, never>, AxiosResponse<AuthResponse>>(
+          apiEndpointUrl(currentInfo.value.apiUrl, 'token/refresh'),
+          {},
+          {
+            headers: {
+              [getBotAuthorizationHeaderName(currentInfo.value.apiUrl)]: `Bearer ${token}`,
+            },
+          },
+        )
+        .then((response) => {
+          if (response.data.access_token) {
+            currentInfo.value.accessToken = response.data.access_token;
+            resolve(response.data.access_token);
+          }
+        })
+        .catch((err) => {
+          console.error(err);
+          if (err.response && isReportsAuthChallenge(err.response.headers)) {
+            // Caddy's reports gate refused the refresh, so the bot never saw
+            // it. Keeping the refresh token means restoring reports auth is
+            // enough to carry on - clearing it would force a full re-login.
+            console.log('Reports authentication required - refresh was not proxied.');
+            requireReportsAuth();
+          } else if (err.response && err.response.status === 401) {
+            console.log('Refresh token did not refresh.');
+            setRefreshTokenExpired();
+          } else if (err.response && (err.response.status === 500 || err.response.status === 404)) {
+            console.log('Bot seems to be offline... - retrying later');
+          }
+          reject(err);
+        });
+    });
   }
 
   return {

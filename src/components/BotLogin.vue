@@ -1,16 +1,27 @@
 <script setup lang="ts">
 import type { AuthPayload, AuthStorageWithBotId } from '@/types';
+import type { PresetBotDefinition } from '@/config/presetBots';
 
 import { useRoute, useRouter } from 'vue-router';
+import axios from 'axios';
+import {
+  isProxiedBotUrl,
+  isReportsAuthChallenge,
+  REPORTS_AUTH_BOOTSTRAP_URL,
+  REPORTS_AUTH_CHECK_URL,
+} from '@/utils/botAuthorization';
+import { findProxiedBotRoute } from '@/utils/knownBotUrls';
 
 const props = withDefaults(
   defineProps<{
     inModal?: boolean;
     existingAuth?: AuthStorageWithBotId;
+    presetBot?: PresetBotDefinition;
   }>(),
   {
     inModal: false,
     existingAuth: undefined,
+    presetBot: undefined,
   },
 );
 const emit = defineEmits<{ loginResult: [value: boolean] }>();
@@ -26,6 +37,7 @@ const pwdState = ref<boolean>();
 const urlState = ref<boolean>();
 const errorMessage = ref<string>('');
 const errorMessageCORS = ref<boolean>(false);
+const reportsAuthRequired = ref<boolean>(false);
 const formRef = ref<HTMLFormElement>();
 const botEdit = ref<boolean>(false);
 const auth = ref<AuthPayload>({
@@ -39,10 +51,28 @@ function emitLoginResult(value: boolean) {
   emit('loginResult', value);
 }
 
+const presetMode = computed(() => !botEdit.value && props.presetBot !== undefined);
+
 const urlDuplicate = computed<boolean>(() => {
   const bots = Object.values(botStore.availableBots).find((bot) => bot.botUrl === auth.value.url);
   return !botEdit.value && bots !== undefined;
 });
+
+// A direct address of a known production bot is cross-origin here and would fail
+// on the bot's CORS policy, so it is connected through the same-origin proxy.
+const proxiedRoute = computed<string | undefined>(() => findProxiedBotRoute(auth.value.url));
+
+function canRequireCorsConfiguration(apiUrl: string): boolean {
+  try {
+    return new URL(apiUrl, window.location.origin).origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function getPingUrl(apiUrl: string): string {
+  return `${apiUrl.replace(/\/$/, '')}/api/v1/ping`;
+}
 
 function checkFormValidity() {
   const valid = formRef.value?.checkValidity();
@@ -61,6 +91,8 @@ function resetLogin() {
   pwdState.value = undefined;
   urlState.value = undefined;
   errorMessage.value = '';
+  errorMessageCORS.value = false;
+  reportsAuthRequired.value = false;
   botEdit.value = false;
 }
 
@@ -74,32 +106,44 @@ async function handleSubmit() {
   if (!checkFormValidity()) {
     return;
   }
+  auth.value.url = proxiedRoute.value ?? auth.value.url.trim().replace(/\/+$/, '');
   errorMessage.value = '';
+  errorMessageCORS.value = false;
+  reportsAuthRequired.value = false;
   // Push the name to submitted names
   try {
-    const botId =
-      botEdit.value && props.existingAuth ? props.existingAuth.botId : botStore.nextBotId;
+    if (isProxiedBotUrl(auth.value.url)) {
+      // Proving reports BasicAuth first means a later 401 can only have come
+      // from the bot. Direct bot URLs never touch this route.
+      await axios.get(REPORTS_AUTH_CHECK_URL, { withCredentials: true });
+    }
+    const botId = props.existingAuth?.botId ?? props.presetBot?.botId ?? botStore.nextBotId;
     const { login } = useLoginInfo(botId);
     await login(auth.value);
     if (botEdit.value) {
-      // Bot editing ...
+      botStore.updateBot(botId, {
+        botName: auth.value.botName,
+        botUrl: auth.value.url,
+      });
       const thisBot = botStore.botStores[botId];
       if (thisBot) {
         thisBot.isBotLoggedIn = true;
         thisBot.isBotOnline = true;
       }
-      // botStore.allRefreshFull();
       emitLoginResult(true);
     } else {
-      // Add new bot
-      const sortId = Object.keys(botStore.availableBots).length + 1;
-      botStore.addBot({
+      const sortId = props.presetBot?.sortId ?? Object.keys(botStore.availableBots).length + 1;
+      const botDescriptor = {
         botName: auth.value.botName,
         botId,
         botUrl: auth.value.url,
-        sortId: sortId,
-      });
-      // switch to newly added bot
+        sortId,
+      };
+      if (botId in botStore.availableBots) {
+        botStore.updateBot(botId, botDescriptor);
+      } else {
+        botStore.addBot(botDescriptor);
+      }
       botStore.selectBot(botId);
       emitLoginResult(true);
       botStore.allRefreshFull();
@@ -121,15 +165,26 @@ async function handleSubmit() {
     errorMessageCORS.value = false;
     // this.nameState = false;
     console.error(error);
-    if (isApiError(error) && error.status === 401) {
-      nameState.value = false;
-      pwdState.value = false;
-      errorMessage.value = 'Connected to bot, however Login failed, Username or Password wrong.';
+    const fromPreflight = axios.isAxiosError(error) && error.config?.url === REPORTS_AUTH_CHECK_URL;
+    if (axios.isAxiosError(error) && error.response && error.response.status === 401) {
+      // The preflight's 401, or Caddy's challenge on the login call itself when
+      // reports auth lapsed in between, both mean the bot was never contacted.
+      if (fromPreflight || isReportsAuthChallenge(error.response.headers)) {
+        reportsAuthRequired.value = true;
+        errorMessage.value = 'Reports authentication is required before connecting to a bot.';
+      } else {
+        nameState.value = false;
+        pwdState.value = false;
+        errorMessage.value = 'Connected to bot, however Login failed, Username or Password wrong.';
+      }
+    } else if (fromPreflight) {
+      urlState.value = true;
+      errorMessage.value =
+        'Could not verify reports authentication with the proxy, so the bot was not contacted. Please check that the reports site is reachable.';
     } else {
-      urlState.value = false;
-      errorMessage.value = `Please verify that the bot is running, the Bot API is enabled and the URL is reachable.
-You can verify this by navigating to ${auth.value.url}/api/v1/ping to make sure the bot API is reachable`;
-      if (auth.value.url !== window.location.origin) {
+      urlState.value = true;
+      errorMessage.value = `Could not reach the bot API or its proxy. Please verify that the bot is running, the Bot API is enabled and ${getPingUrl(auth.value.url)} is reachable.`;
+      if (canRequireCorsConfiguration(auth.value.url)) {
         errorMessageCORS.value = true;
       }
     }
@@ -145,12 +200,14 @@ function handleOk(evt) {
 
 function reset() {
   resetLogin();
-  console.log('reset ', props.existingAuth);
   if (props.existingAuth) {
     botEdit.value = true;
     auth.value.botName = props.existingAuth.botName;
     auth.value.url = props.existingAuth.apiUrl;
     auth.value.username = props.existingAuth.username ?? '';
+  } else if (props.presetBot) {
+    auth.value.botName = props.presetBot.botName;
+    auth.value.url = props.presetBot.botUrl;
   }
 }
 
@@ -161,12 +218,26 @@ defineExpose({
 onMounted(() => {
   reset();
 });
+
+watch(
+  () => [props.existingAuth, props.presetBot],
+  () => reset(),
+  { deep: true },
+);
 </script>
 
 <template>
   <form ref="formRef" novalidate @submit.stop.prevent="handleSubmit" @reset="handleReset">
+    <UAlert v-if="presetMode" class="mb-4 text-start" color="info" title="Preset bot">
+      <template #description>
+        Connecting preset bot <strong>{{ props.presetBot?.botName }}</strong
+        >. The stable UI bot id will remain <code>{{ props.presetBot?.botId }}</code
+        >.
+      </template>
+    </UAlert>
     <UFormField class="mb-4" label="Bot Name">
       <UInput
+        id="name-input"
         v-model="auth.botName"
         placeholder="Bot Name"
         class="mt-1 block w-full"
@@ -186,6 +257,17 @@ onMounted(() => {
         class="mt-1 block w-full"
         @keydown.enter="handleOk"
       />
+      <UAlert
+        v-if="proxiedRoute"
+        class="mt-2"
+        color="info"
+        title="Connecting through the dashboard proxy"
+      >
+        <template #description>
+          This bot is reached through <code>{{ proxiedRoute }}</code> on this site, so its CORS
+          settings do not apply. Submit will use that address.
+        </template>
+      </UAlert>
       <UAlert
         v-if="urlDuplicate"
         class="mt-2"
@@ -229,6 +311,13 @@ onMounted(() => {
       >
         <template #description>
           {{ errorMessage }}
+          <a
+            v-if="reportsAuthRequired"
+            :href="REPORTS_AUTH_BOOTSTRAP_URL"
+            class="text-primary underline"
+          >
+            Connect to reports
+          </a>
           <span v-if="errorMessageCORS">
             Please also check your bot's CORS configuration:
             <a

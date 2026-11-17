@@ -134,6 +134,10 @@ export interface EntryPricing extends PriceBase {
 
 export interface BotState {
   version: string;
+  /** Set by the dashboard gateway: `NT` for Nautilus bots behind its Freqtrade translation. */
+  engine?: 'FT' | 'NT';
+  /** Set by the dashboard gateway when it refuses write calls for this bot. */
+  dashboard_read_only?: boolean;
   strategy_version?: string;
   api_version: number;
   dry_run: boolean;

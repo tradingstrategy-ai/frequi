@@ -1,73 +1,121 @@
-import type { $Fetch } from 'ofetch';
-import { FetchError, ofetch } from 'ofetch';
+import type { AxiosHeaders } from 'axios';
+import axios from 'axios';
+import {
+  getBotAuthorizationHeaderName,
+  isProxiedBotUrl,
+  isReportsAuthChallenge,
+} from '@/utils/botAuthorization';
+import { clearReportsAuthRequirement, requireReportsAuth } from '@/composables/reportsAuth';
 
 type UserServiceType = ReturnType<typeof useLoginInfo>;
 
-/** Error body shapes returned by the freqtrade API. */
-export interface ApiErrorBody {
-  detail?: string;
-  error?: string;
-}
-
-/** Type guard for errors thrown by the API client (non-2xx responses, network errors, timeouts). */
-export function isApiError(error: unknown): error is FetchError<ApiErrorBody> {
-  return error instanceof FetchError;
-}
-
-/** True if the error was caused by the request timeout. */
-export function isTimeoutError(error: unknown): boolean {
-  return isApiError(error) && (error.cause as Error | undefined)?.name === 'TimeoutError';
-}
-
-export function useApi(userService: UserServiceType, botId: string): { api: $Fetch } {
-  function markBotOffline(loggedOut = false) {
-    const botStore = useBotStore();
-    const subStore = botStore.botStores[botId];
-    if (subStore) {
-      subStore.setIsBotOnline(false);
-      if (loggedOut) {
-        subStore.isBotLoggedIn = false;
-      }
-    }
-  }
-
-  const api = ofetch.create({
+export function useApi(userService: UserServiceType, botId: string) {
+  const api = axios.create({
     baseURL: userService.baseUrl.value,
     timeout: 20000,
-    credentials: 'include',
-    // Retry exactly once, and only after a 401 - the retried request runs through
-    // onRequest again and picks up the refreshed access token.
-    retry: 1,
-    retryDelay: 0,
-    retryStatusCodes: [401],
-    onRequest({ options }) {
-      const token = userService.accessToken.value;
-      if (token) {
-        options.headers.set('Authorization', `Bearer ${token}`);
-      }
-    },
-    onRequestError() {
-      // fetch itself failed (network error, CORS, DNS, ...) - no response available.
-      console.log('Bot not running...');
-      markBotOffline();
-    },
-    async onResponseError({ response, options }) {
-      if (response.status === 401) {
-        try {
-          await userService.refreshToken();
-        } catch (error) {
-          console.log('No new token received');
-          console.log(error);
-          markBotOffline(true);
-          // Refresh failed - don't retry, let the original 401 propagate to the caller.
-          options.retry = 0;
-        }
-      } else if (response.status === 500) {
-        console.log('Bot not running...');
-        markBotOffline();
-      }
-    },
+    withCredentials: true,
   });
+  /**
+   * Header this bot's own credentials travel in. Behind the reports proxy the
+   * normal Authorization header belongs to the browser-managed reports
+   * BasicAuth, so the bot token moves to the custom header Caddy rewrites.
+   */
+  const botAuthHeader = () => getBotAuthorizationHeaderName(userService.getLoginInfo().apiUrl);
+  const isProxied = () => isProxiedBotUrl(userService.getLoginInfo().apiUrl);
+  // Sent auth headers interceptor
+  api.interceptors.request.use(
+    (request) => {
+      const token = userService.accessToken.value;
+      try {
+        if (token) {
+          request.headers = request.headers as AxiosHeaders;
+          request.headers.set(botAuthHeader(), `Bearer ${token}`);
+        }
+      } catch (e) {
+        console.log(e);
+      }
+      return request;
+    },
+    (error) => Promise.reject(error),
+  );
+
+  api.interceptors.response.use(
+    (response) => {
+      if (isProxied()) {
+        clearReportsAuthRequirement();
+      }
+      return response;
+    },
+    (err) => {
+      // console.log(err);
+      if (err.response && err.response.status === 401) {
+        if (isReportsAuthChallenge(err.response.headers)) {
+          // Caddy's reports gate answered, so the bot was never reached. Its
+          // tokens are still valid - refreshing here would collect the same 401
+          // and be misread as an expired refresh token, wiping the bot session.
+          console.log('Reports authentication required - bot request was not proxied.');
+          requireReportsAuth();
+          const botStore = useBotStore();
+          botStore.botStores[botId]?.setIsBotOnline(false);
+          return Promise.reject(err);
+        }
+        return userService
+          .refreshToken()
+          .catch((error) => {
+            console.log('No new token received');
+            console.log(error);
+            // Reports auth can lapse between the bot's 401 and the refresh.
+            // Restoring it needs no bot credentials, so keep the bot logged in.
+            const reportsAuthFailed = isReportsAuthChallenge(error?.response?.headers);
+            if (reportsAuthFailed) {
+              requireReportsAuth();
+            }
+            const botStore = useBotStore();
+            if (botStore.botStores[botId]) {
+              botStore.botStores[botId].setIsBotOnline(false);
+              if (!reportsAuthFailed) {
+                botStore.botStores[botId].isBotLoggedIn = false;
+              }
+            }
+          })
+          .then((token) => {
+            if (!token) {
+              // The refresh failed and the handler above recorded why. Retrying
+              // with "Bearer undefined" would only collect another 401.
+              return undefined;
+            }
+            // Retry original request with new token
+            const { config } = err;
+            config.headers.set(botAuthHeader(), `Bearer ${token}`);
+
+            return new Promise((resolve, reject) => {
+              axios
+                .request(config)
+                .then((response) => {
+                  resolve(response);
+                })
+                .catch((error) => {
+                  reject(error);
+                });
+            });
+          })
+          .catch((error) => {
+            console.log(error);
+          });
+
+        // maybe redirect to /login if needed !
+      }
+      if ((err.response && err.response.status === 500) || err.message === 'Network Error') {
+        console.log('Bot not running...');
+        const botStore = useBotStore();
+        botStore.botStores[botId]?.setIsBotOnline(false);
+      }
+
+      return new Promise((resolve, reject) => {
+        reject(err);
+      });
+    },
+  );
 
   return {
     api,
